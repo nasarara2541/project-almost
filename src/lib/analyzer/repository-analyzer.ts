@@ -7,7 +7,9 @@ import type {
   ArchitectureNode,
   CodeLocation,
   PreviewElement,
+  RepositoryProjectInfo,
 } from "../../types/api";
+import { detectInterface, inventoryWorkspace } from "./interface-detector";
 import { parseSourceFile, type ParsedSourceFile, type ParsedSymbol } from "./parser";
 
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]);
@@ -298,9 +300,22 @@ function fileKind(file: ParsedSourceFile): AnalyzedSourceFile["kind"] {
   return "source";
 }
 
+const FALLBACK_PROJECT: RepositoryProjectInfo = {
+  projectType: "unknown",
+  frameworks: [],
+  packageManagers: [],
+  monorepo: false,
+  subprojects: [],
+  previewCandidates: [],
+  previewAvailable: false,
+  previewReason: "No runnable frontend preview candidate was detected.",
+  source: "verified-local",
+};
+
 export async function analyzeRepository(
   repository: AnalysisRepository,
   sessionId: string,
+  project: RepositoryProjectInfo = FALLBACK_PROJECT,
 ): Promise<AnalyzeResult> {
   const sourcePaths = await scanSourceFiles(repository.sourcePath);
   const parsedFiles = await Promise.all(
@@ -336,6 +351,7 @@ export async function analyzeRepository(
 
   const routes = detectRoutes(parsedFiles, importTargets);
   const graph = buildGraph(parsedFiles, routes, importTargets);
+  const inventory = await inventoryWorkspace(repository.sourcePath);
   const elements: PreviewElement[] = routes.map((route) => ({
     id: `preview:${route.route}:${route.file}`,
     label: route.component?.name ?? route.route,
@@ -355,25 +371,33 @@ export async function analyzeRepository(
     .filter((file) => file.entryPoint)
     .map((file) => ({ file: file.relativePath, lineStart: 1 }));
 
+  const interfaceReport = await detectInterface({
+    sourcePath: repository.sourcePath,
+    parsedFiles,
+    routes: routes.map((route) => ({
+      route: route.route,
+      file: route.file,
+      componentName: route.component?.name,
+      location: route.component?.location ?? { file: route.file, lineStart: 1 },
+    })),
+    project,
+    inventory,
+  });
+
   return {
     analysisId: sessionId,
     sessionId,
     repoUrl: repository.repoUrl,
+    name: repository.repoUrl.split("/").filter(Boolean).at(-1) ?? repository.repoUrl,
     routes: [...new Set(routes.map((route) => route.route))],
     elements,
     files,
     entryPoints,
     graph,
-    project: {
-      projectType: "unknown",
-      frameworks: [],
-      packageManagers: [],
-      monorepo: false,
-      subprojects: [],
-      previewCandidates: [],
-      previewAvailable: false,
-      previewReason: "No runnable frontend preview candidate was detected.",
-      source: "verified-local",
-    },
+    project,
+    languages: inventory.languages,
+    folders: inventory.folders,
+    importantFiles: inventory.importantFiles,
+    interface: interfaceReport,
   };
 }

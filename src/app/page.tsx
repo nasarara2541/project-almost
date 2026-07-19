@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PreviewSessionPanel } from "@/components/preview-session-panel";
+import { ArchitecturePanel } from "@/components/architecture-panel";
+import { InterfaceGallery } from "@/components/interface-gallery";
+import { LivePreviewPanel } from "@/components/live-preview-panel";
 import { ProjectSummary } from "@/components/project-summary";
 import { RepositoryForm } from "@/components/repository-form";
+import { TracePanel } from "@/components/trace-panel";
 import { BUNDLED_FIXTURE_REPO_URL } from "@/lib/preview/constants";
 import { findTraceNodeId } from "@/lib/trace/highlighting";
 import type {
@@ -20,10 +23,11 @@ export default function Home() {
   const [analysis, setAnalysis] = useState<AnalyzeResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [session, setSession] = useState<PreviewSession | null>(null);
   const [isStartingPreview, setIsStartingPreview] = useState(false);
   const [previewLogs, setPreviewLogs] = useState<string[]>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [trace, setTrace] = useState<TraceResult | null>(null);
   const [isTracing, setIsTracing] = useState(false);
   const [traceError, setTraceError] = useState<string | null>(null);
@@ -46,16 +50,22 @@ export default function Home() {
     };
   }, [analysis?.analysisId]);
 
-  async function handleAnalyze(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsAnalyzing(true);
+  function resetResults() {
     setAnalysis(null);
     setAnalysisError(null);
-    setSession(null);
+    setSelectedGalleryId(null);
     setSelectedNodeId(null);
+    setSession(null);
+    setPreviewLogs([]);
     setTrace(null);
     setTraceError(null);
     setTraceErrorCode(null);
+  }
+
+  async function handleAnalyze(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsAnalyzing(true);
+    resetResults();
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -67,13 +77,34 @@ export default function Home() {
         throw new Error("error" in body ? body.error : "Repository analysis failed.");
       }
       setAnalysis(body);
-      const firstRoute = body.graph.nodes.find((node) => node.type === "route");
-      setSelectedNodeId(firstRoute?.id ?? body.graph.nodes[0]?.id ?? null);
+      const firstScreen = body.interface.screens.find((screen) => screen.previewHtml);
+      if (firstScreen) {
+        setSelectedGalleryId(firstScreen.id);
+        setSelectedNodeId(findTraceNodeId(body.graph, firstScreen.location));
+      } else {
+        const firstRoute = body.graph.nodes.find((node) => node.type === "route");
+        setSelectedNodeId(firstRoute?.id ?? body.graph.nodes[0]?.id ?? null);
+      }
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "Repository analysis failed.");
     } finally {
       setIsAnalyzing(false);
     }
+  }
+
+  function handleSelectGalleryItem(itemId: string, graphNodeId: string | null) {
+    if (!analysis) return;
+    setSelectedGalleryId(itemId);
+    if (graphNodeId && analysis.graph.nodes.some((node) => node.id === graphNodeId)) {
+      setSelectedNodeId(graphNodeId);
+      return;
+    }
+    const item =
+      analysis.interface.screens.find((screen) => screen.id === itemId) ??
+      analysis.interface.components.find(
+        (component) => `component-card:${component.file}#${component.name}` === itemId,
+      );
+    if (item) setSelectedNodeId(findTraceNodeId(analysis.graph, item.location));
   }
 
   async function handleStartPreview(projectRoot: string) {
@@ -133,6 +164,13 @@ export default function Home() {
     }
   }
 
+  function handleStopPreview() {
+    void import("@/lib/preview/webcontainer-client").then(({ stopPreview }) => stopPreview());
+    setSession(null);
+    setPreviewLogs([]);
+    setIsStartingPreview(false);
+  }
+
   async function handleTrace(question: string) {
     if (!analysis) return;
     setIsTracing(true);
@@ -170,14 +208,7 @@ export default function Home() {
 
   function handleReset() {
     void import("@/lib/preview/webcontainer-client").then(({ stopPreview }) => stopPreview());
-    setPreviewLogs([]);
-    setAnalysis(null);
-    setAnalysisError(null);
-    setSession(null);
-    setSelectedNodeId(null);
-    setTrace(null);
-    setTraceError(null);
-    setTraceErrorCode(null);
+    resetResults();
     setIsStartingPreview(false);
     window.setTimeout(() => document.getElementById("repo-url")?.focus(), 0);
   }
@@ -187,28 +218,28 @@ export default function Home() {
       <a className="skip-link" href="#repository-heading">Skip to repository analysis</a>
       <nav className="nav" aria-label="Primary navigation">
         <a className="brand" href="#top" aria-label="RepoLens home"><span>RL</span>RepoLens</a>
-        <p>Run any public React, Next.js, or Vite repo in your browser.</p>
+        <p>See the interface inside any public GitHub repository.</p>
       </nav>
 
       <header className="hero" id="top">
-        <p className="eyebrow">Repository intelligence + optional live preview</p>
-        <h1>Understand any repo. Run it live in your browser.</h1>
+        <p className="eyebrow">GitHub-to-interface visualizer</p>
+        <h1>What does this repo look like — and which code makes it?</h1>
         <p className="hero__copy">
-          Paste a public GitHub repository. RepoLens maps its architecture, then runs it live in a
-          sandboxed in-browser Node.js runtime (WebContainers)—no repository code ever executes
-          on the server.
+          Paste a public GitHub repository. RepoLens inspects the source read-only, reconstructs a
+          safe visual preview of the interface it contains, and connects every screen and component
+          back to the files that create it. No repository code is executed.
         </p>
       </header>
 
       <section className="how-it-works" aria-labelledby="how-it-works-heading">
         <div className="how-it-works__intro">
-          <p className="section-label">Two independent modes</p>
-          <h2 id="how-it-works-heading">Analysis is universal. Execution is optional.</h2>
+          <p className="section-label">How it works</p>
+          <h2 id="how-it-works-heading">Fetch → detect → preview → connect</h2>
         </div>
         <ol>
-          <li><span>1</span><div><strong>Fetch read-only</strong><p>Read public metadata, manifests, and supported source files.</p></div></li>
-          <li><span>2</span><div><strong>Map every project</strong><p>Detect frameworks, package managers, monorepos, and runnable roots.</p></div></li>
-          <li><span>3</span><div><strong>Preview in your browser</strong><p>npm install and the dev server run inside a sandboxed WebContainer in your own tab.</p></div></li>
+          <li><span>1</span><div><strong>Fetch &amp; analyze</strong><p>Read metadata, manifests, and source read-only. Detect the project type, frameworks, and monorepo packages.</p></div></li>
+          <li><span>2</span><div><strong>Detect the interface</strong><p>Find pages, routes, popups, components, styles, and assets — including Chrome-extension popups.</p></div></li>
+          <li><span>3</span><div><strong>Preview &amp; connect</strong><p>Explore a static interface gallery, click any screen to see its source, and trace features through the architecture graph.</p></div></li>
         </ol>
       </section>
 
@@ -220,31 +251,66 @@ export default function Home() {
         onSubmit={handleAnalyze}
       />
 
-      {analysis ? (
-        <ProjectSummary
-          project={analysis.project}
-          isStartingPreview={isStartingPreview}
-          onStartPreview={handleStartPreview}
-        />
+      {isAnalyzing ? (
+        <section className="analysis-state" aria-live="polite">
+          <span className="spinner" aria-hidden="true" />
+          <h2>Analyzing repository</h2>
+          <p>Fetching source read-only and reconstructing the interface…</p>
+        </section>
+      ) : analysisError ? (
+        <section className="analysis-state analysis-state--error" role="alert">
+          <h2>Analysis failed</h2>
+          <p>{analysisError}</p>
+        </section>
       ) : null}
 
-      <PreviewSessionPanel
-        session={session}
-        previewLogs={previewLogs}
-        isSubmitting={isStartingPreview}
-        analysis={analysis}
-        isAnalyzing={isAnalyzing}
-        analysisError={analysisError}
-        selectedNodeId={selectedNodeId}
-        trace={trace}
-        isTracing={isTracing}
-        traceError={traceError}
-        traceErrorCode={traceErrorCode}
-        onAskTrace={handleTrace}
-        onSelectTraceLocation={handleTraceLocation}
-        onSelectNode={setSelectedNodeId}
-        onReset={handleReset}
-      />
+      {analysis ? (
+        <>
+          <div className="results-toolbar">
+            <span className="workspace__address">{analysis.repoUrl}</span>
+            <button className="reset-button" type="button" onClick={handleReset}>
+              Reset analysis
+            </button>
+          </div>
+
+          <ProjectSummary analysis={analysis} />
+
+          <InterfaceGallery
+            analysis={analysis}
+            selectedItemId={selectedGalleryId}
+            onSelectItem={handleSelectGalleryItem}
+          />
+
+          <div className="code-insight-workspace">
+            <ArchitecturePanel
+              analysis={analysis}
+              isLoading={false}
+              error={null}
+              selectedNodeId={selectedNodeId}
+              trace={trace}
+              onSelectNode={setSelectedNodeId}
+            />
+            <TracePanel
+              disabled={!analysis}
+              isLoading={isTracing}
+              error={traceError}
+              errorCode={traceErrorCode}
+              trace={trace}
+              onAsk={handleTrace}
+              onSelectLocation={handleTraceLocation}
+            />
+          </div>
+
+          <LivePreviewPanel
+            analysis={analysis}
+            session={session}
+            previewLogs={previewLogs}
+            isStarting={isStartingPreview}
+            onStartPreview={handleStartPreview}
+            onStopPreview={handleStopPreview}
+          />
+        </>
+      ) : null}
     </main>
   );
 }

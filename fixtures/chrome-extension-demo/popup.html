@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Flex Scheduler</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="popup-header">
+    <img src="icons/icon48.png" alt="Flex Scheduler logo" class="logo">
+    <h1>Flex Scheduler</h1>
+  </header>
+  <main>
+    <section class="status">
+      <span id="status-label">Not scheduled</span>
+      <span class="dot"></span>
+    </section>
+    <form class="schedule-form">
+      <label for="start-time">Start time</label>
+      <input id="start-time" name="start-time" type="time" value="09:00">
+      <label for="duration">Duration (hours)</label>
+      <select id="duration" name="duration">
+        <option>2</option>
+        <option>4</option>
+        <option selected>6</option>
+      </select>
+      <button id="schedule" type="submit">Schedule block</button>
+      <button id="cancel" type="button" class="secondary">Cancel all</button>
+    </form>
+  </main>
+  <footer>
+    <a href="options.html" id="open-options">Options</a>
+  </footer>
+  <script src="popup.js"></script>
+</body>
+</html>

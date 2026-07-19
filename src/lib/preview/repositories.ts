@@ -28,11 +28,22 @@ export class RepositoryValidationError extends Error {
   }
 }
 
+/**
+ * Accepts the common ways people paste a GitHub repository URL — http or
+ * https, an optional www. prefix, a missing scheme, trailing slashes, a
+ * trailing .git, and deep links such as /tree/<branch>, /blob/<path>,
+ * /issues, or /pulls — and canonicalizes all of them to
+ * `https://github.com/<owner>/<repository>`.
+ */
 export function normalizeGitHubRepositoryUrl(input: string): string {
-  let url: URL;
+  let candidate = input.trim();
+  if (candidate && !/^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)) {
+    candidate = `https://${candidate}`;
+  }
 
+  let url: URL;
   try {
-    url = new URL(input.trim());
+    url = new URL(candidate);
   } catch {
     throw new RepositoryValidationError(
       "Enter a valid public GitHub repository URL.",
@@ -40,24 +51,23 @@ export function normalizeGitHubRepositoryUrl(input: string): string {
     );
   }
 
+  const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
   if (
-    url.protocol !== "https:" ||
-    url.hostname.toLowerCase() !== "github.com" ||
+    !["http:", "https:"].includes(url.protocol) ||
+    hostname !== "github.com" ||
     url.username ||
-    url.password ||
-    url.search ||
-    url.hash
+    url.password
   ) {
     throw new RepositoryValidationError(
-      "Only public HTTPS github.com repository URLs are supported.",
+      "Only public github.com repository URLs are supported.",
       "INVALID_URL",
     );
   }
 
   const segments = url.pathname.split("/").filter(Boolean);
-  if (segments.length !== 2) {
+  if (segments.length < 2) {
     throw new RepositoryValidationError(
-      "Use a repository root URL in the form https://github.com/owner/repository.",
+      "Use a repository URL in the form https://github.com/owner/repository.",
       "INVALID_URL",
     );
   }

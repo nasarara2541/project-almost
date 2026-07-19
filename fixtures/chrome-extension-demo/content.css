@@ -1,0 +1,11 @@
+.flex-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 6px 12px;
+  background: #12305e;
+  color: #ffffff;
+  font-size: 12px;
+  z-index: 9999;
+}

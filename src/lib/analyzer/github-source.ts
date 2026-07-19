@@ -27,6 +27,22 @@ const RUNTIME_TEXT_EXTENSIONS = new Set([
   ".toml",
   ".env.example",
   ".py",
+  // Other common languages, fetched so language breakdown, folder structure,
+  // and architecture context work for CLI/backend/library/data repositories.
+  ".go",
+  ".rs",
+  ".rb",
+  ".php",
+  ".java",
+  ".kt",
+  ".swift",
+  ".c",
+  ".h",
+  ".cpp",
+  ".cc",
+  ".cs",
+  ".sh",
+  ".ipynb",
 ]);
 // Small binary assets (logos, icons, fonts) previews commonly need.
 const RUNTIME_BINARY_EXTENSIONS = new Set([
@@ -59,6 +75,15 @@ const MANIFEST_FILES = new Set([
   "Pipfile",
   "manifest.json",
   ".nvmrc",
+  // Backend/library manifests used for classification and overview.
+  "go.mod",
+  "Cargo.toml",
+  "Gemfile",
+  "composer.json",
+  "pom.xml",
+  "build.gradle",
+  "Dockerfile",
+  "Makefile",
 ]);
 const MAX_FILES = 2_000;
 const MAX_FILE_BYTES = 512 * 1024;

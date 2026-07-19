@@ -1,0 +1,52 @@
+body {
+  width: 320px;
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  color: #1f2430;
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #12305e;
+  color: #ffffff;
+}
+
+.logo {
+  width: 24px;
+  height: 24px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #f3f6fb;
+}
+
+.schedule-form {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+button {
+  background: #12305e;
+  color: #ffffff;
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+
+button.secondary {
+  background: #e5e9f2;
+  color: #1f2430;
+}
+
+footer {
+  padding: 10px 14px;
+  border-top: 1px solid #e5e9f2;
+}

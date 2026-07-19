@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeRepository } from "../../src/lib/analyzer/repository-analyzer";
 import { getAllowedRepositories } from "../../src/lib/preview/repositories";
 import { calculateTraceHighlight } from "../../src/lib/trace/highlighting";
-import { ModelConfigurationError, requestTraceFromLlama } from "../../src/lib/trace/llama-trace";
+import { ModelConfigurationError, requestTraceFromOpenAi } from "../../src/lib/trace/openai-trace";
 import {
   rankRelevantNodes,
   selectRelevantSourceContext,
@@ -154,7 +154,7 @@ describe("Feature trace behavior", () => {
   it("reports missing model configuration without making a request", async () => {
     const { analysis } = await fixtureAnalysis();
     await expect(
-      requestTraceFromLlama(
+      requestTraceFromOpenAi(
         "How does settings work?",
         analysis,
         { nodeIds: [], files: [] },

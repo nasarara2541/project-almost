@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Flex Scheduler Demo",
+  "version": "1.2.0",
+  "description": "Demo Chrome extension fixture: schedules flex blocks from a popup.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Flex Scheduler"
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["storage", "alarms"],
+  "content_scripts": [
+    {
+      "matches": ["https://example.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ]
+}

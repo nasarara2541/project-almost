@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { analysisSessionManager } from "@/lib/analyzer/analysis-session-manager";
-import { ModelConfigurationError, TraceModelError } from "@/lib/trace/llama-trace";
+import { ModelConfigurationError, TraceModelError } from "@/lib/trace/openai-trace";
 import { traceRepositoryFeature } from "@/lib/trace/trace-repository";
 import { TraceValidationError } from "@/lib/trace/trace-result";
 

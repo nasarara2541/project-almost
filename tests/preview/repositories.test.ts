@@ -9,17 +9,23 @@ import {
 } from "../../src/lib/preview/repositories";
 
 describe("GitHub repository validation", () => {
-  it("normalizes a public repository root URL", () => {
-    expect(normalizeGitHubRepositoryUrl("https://github.com/Owner/Repo.git/"))
-      .toBe("https://github.com/owner/repo");
+  it.each([
+    ["https://github.com/Owner/Repo.git/", "https://github.com/owner/repo"],
+    ["http://github.com/Owner/Repo", "https://github.com/owner/repo"],
+    ["https://www.github.com/Owner/Repo/", "https://github.com/owner/repo"],
+    ["github.com/Owner/Repo", "https://github.com/owner/repo"],
+    ["https://github.com/Owner/Repo/tree/main", "https://github.com/owner/repo"],
+    ["https://github.com/Owner/Repo/blob/main/src/app.ts", "https://github.com/owner/repo"],
+    ["https://github.com/Owner/Repo?tab=readme-ov-file", "https://github.com/owner/repo"],
+  ])("normalizes common GitHub URL form %s", (input, expected) => {
+    expect(normalizeGitHubRepositoryUrl(input)).toBe(expected);
   });
 
   it.each([
-    "http://github.com/owner/repo",
     "https://gitlab.com/owner/repo",
-    "https://github.com/owner/repo/tree/main",
     "https://token@github.com/owner/repo",
-    "not-a-url",
+    "https://github.com/owner-only",
+    "not a url at all",
   ])("rejects unsupported URL %s", (url) => {
     expect(() => normalizeGitHubRepositoryUrl(url)).toThrow(RepositoryValidationError);
   });

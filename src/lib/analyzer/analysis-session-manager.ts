@@ -56,15 +56,14 @@ export class AnalysisSessionManager {
     }
 
     try {
-      const [baseResult, project] = await Promise.all([
-        analyzeRepository(repository, analysisId),
-        detectRepositoryProject(repository, {
-          verifiedLocal: Boolean(verifiedRepository),
-          defaultBranch,
-          description,
-        }),
-      ]);
-      const result: AnalyzeResult = { ...baseResult, project };
+      // Project detection runs first so interface detection can attribute
+      // screens/components to monorepo subprojects.
+      const project = await detectRepositoryProject(repository, {
+        verifiedLocal: Boolean(verifiedRepository),
+        defaultBranch,
+        description,
+      });
+      const result = await analyzeRepository(repository, analysisId, project);
       const timer = setTimeout(() => void this.delete(analysisId), this.ttlMs);
       if (typeof timer === "object" && "unref" in timer) timer.unref();
       this.records.set(analysisId, {

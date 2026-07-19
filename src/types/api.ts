@@ -50,10 +50,14 @@ export type TraceStep = {
   explanation: string;
 };
 
+export type TraceProvider = "openai" | "local";
+
 export type TraceResult = {
   question: string;
   steps: TraceStep[];
   confidence: "high" | "medium" | "low";
+  /** Which engine produced the answer. "local" is the deterministic analyzer. */
+  provider?: TraceProvider;
 };
 
 export type CreatePreviewRequest = {
@@ -131,6 +135,7 @@ export type RepositoryProjectInfo = {
     | "cli"
     | "chrome-extension"
     | "python"
+    | "backend"
     | "mixed"
     | "unknown";
   frameworks: DetectedFramework[];
@@ -143,6 +148,79 @@ export type RepositoryProjectInfo = {
   defaultBranch?: string;
   description?: string;
   source: "verified-local" | "github-readonly";
+};
+
+/** Heuristic visual role of a detected interface component. */
+export type InterfaceRole =
+  | "page"
+  | "layout"
+  | "navigation"
+  | "form"
+  | "card"
+  | "table"
+  | "modal"
+  | "button"
+  | "list"
+  | "chart"
+  | "media"
+  | "control"
+  | "widget";
+
+export type InterfaceScreenKind =
+  | "page"
+  | "route"
+  | "popup"
+  | "options"
+  | "component"
+  | "content-script";
+
+/**
+ * A previewable screen of the repository's interface: an HTML page, a route
+ * component, or a Chrome-extension popup/options page. `previewHtml` is a
+ * fully sanitized, script-free document reconstructed from source — it is
+ * rendered in a sandboxed iframe and never executes repository code.
+ */
+export type InterfaceScreen = {
+  id: string;
+  name: string;
+  kind: InterfaceScreenKind;
+  route?: string;
+  file: string;
+  location: CodeLocation;
+  componentNames: string[];
+  styles: string[];
+  assets: string[];
+  controls: string[];
+  previewHtml: string | null;
+  subprojectRoot: string;
+};
+
+export type InterfaceComponent = {
+  name: string;
+  file: string;
+  location: CodeLocation;
+  role: InterfaceRole;
+  previewHtml: string | null;
+  subprojectRoot: string;
+};
+
+export type InterfaceReport = {
+  hasVisualInterface: boolean;
+  summary: string;
+  message?: string;
+  screens: InterfaceScreen[];
+  components: InterfaceComponent[];
+  styleFiles: string[];
+  tailwind: boolean;
+  images: string[];
+  icons: string[];
+};
+
+export type LanguageStat = {
+  name: string;
+  files: number;
+  bytes: number;
+  percent: number;
 };
 
 export type AnalyzedSourceFile = {
@@ -159,12 +237,19 @@ export type AnalyzeResult = {
   analysisId: string;
   sessionId: string;
   repoUrl: string;
+  /** Repository name derived from the normalized URL. */
+  name: string;
   routes: string[];
   elements: PreviewElement[];
   files: AnalyzedSourceFile[];
   entryPoints: CodeLocation[];
   graph: ArchitectureGraph;
   project: RepositoryProjectInfo;
+  languages: LanguageStat[];
+  /** Bounded folder-structure outline of the fetched repository. */
+  folders: string[];
+  importantFiles: string[];
+  interface: InterfaceReport;
 };
 
 export type TraceRequest = {

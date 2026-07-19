@@ -15,9 +15,9 @@ type TracePanelProps = {
 };
 
 const suggestions = [
+  "Which code creates the home screen?",
   "How does the settings page work?",
-  "Where does deployment begin?",
-  "Which files handle preference changes?",
+  "Which files control dark mode?",
 ];
 
 function formatTrace(trace: TraceResult): string {
@@ -115,6 +115,18 @@ export function TracePanel({
               <span className={`confidence confidence--${trace.confidence}`}>
                 {trace.confidence} confidence
               </span>
+              {trace.provider ? (
+                <span
+                  className={`provider-badge provider-badge--${trace.provider}`}
+                  title={
+                    trace.provider === "local"
+                      ? "Produced by the deterministic local analyzer — no AI model was used."
+                      : "Produced by the configured OpenAI model and validated against the repository."
+                  }
+                >
+                  {trace.provider === "local" ? "Local analysis" : "AI model"}
+                </span>
+              ) : null}
             </div>
             <CopyButton value={formatTrace(trace)} label="Trace result" />
           </div>

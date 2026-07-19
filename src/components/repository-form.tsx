@@ -1,3 +1,5 @@
+import { CopyButton } from "@/components/copy-button";
+
 type RepositoryFormProps = {
   repoUrl: string;
   isAnalyzing: boolean;
@@ -45,9 +47,10 @@ export function RepositoryForm({
         </button>
       </div>
       <p id="repo-help" className="repo-form__help">
-        Source is fetched read-only for analysis. Code execution remains restricted to reviewed local fixtures.
+        Any public github.com repository works — http/https, trailing slashes, and /tree/branch
+        links are normalized. Source is fetched read-only; previews are reconstructed without
+        executing repository code.
       </p>
     </form>
   );
 }
-import { CopyButton } from "@/components/copy-button";

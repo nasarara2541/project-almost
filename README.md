@@ -1,33 +1,88 @@
 # RepoLens
 
-Paste a public GitHub repository and RepoLens maps its architecture, runs it live inside your own browser tab, and explains how the visible product connects to the underlying code.
+RepoLens is a **GitHub-to-interface visualizer**. Paste any public GitHub
+repository URL and RepoLens answers: *what does this project look like, what
+interface does it contain, and how is that interface connected to the code?*
 
-Three layers, connected:
+It does not need to run the repository. The interface preview is
+reconstructed **statically and safely from source** — no repository code is
+ever executed by default.
 
 ```
-What the user sees  ->  How the product works  ->  Where it lives in the code
+GitHub URL
+  → fetch & analyze repository (read-only)
+  → detect project type and visual interface
+  → extract screens, pages, popups, routes, components, styles, assets
+  → render a safe visual preview gallery
+  → connect every screen/component to its source files
+  → show the architecture graph
+  → answer questions grounded in the real code
 ```
 
-## How it works
+## What you get for different repositories
 
-1. **Analyze.** Paste any public `https://github.com/owner/repository` URL. The server fetches the repository read-only (metadata, tree, manifests, source, and the text/assets needed to run it), classifies the project, detects monorepo subprojects and runnable roots, and builds a dependency/architecture graph. Nothing is executed on the server.
-2. **Preview in your browser.** For runnable React, Next.js, or Vite projects, the server returns a file bundle and the browser boots a sandboxed Node.js runtime (WebContainers, the technology behind StackBlitz), runs `npm install` and the project's dev script entirely client-side, and streams the running app into an iframe. No server process, no shared infrastructure executing untrusted code — which is why arbitrary public repositories are allowed.
-3. **Trace.** Ask a plain-English question ("where does the settings page come from?"). Relevant source context is sent to the model with a strict JSON schema requiring real file names, line numbers, and function names; every citation is validated against the actual repository before it is shown, and the matching node is highlighted in the architecture graph.
+- **Frontend websites** (React, Next.js, Vite, Vue, Svelte, Astro, Angular,
+  Nuxt): homepage and route screens, components with inferred visual roles
+  (navigation, card, table, form, modal, …), CSS/Tailwind detection, images
+  and other assets.
+- **Chrome extensions**: the `popup.html` interface rendered as a sanitized
+  preview, detected popup buttons/inputs/links, extension icons, options
+  page, and content-script surfaces — each connected to its source files.
+- **Frontend monorepos**: every package is detected (e.g. a Vite app and a
+  Next.js app side by side) and the gallery has a project picker to choose
+  which interface to explore.
+- **CLI, backend, library, or data repositories**: analysis never fails.
+  You get the project type, technologies, language breakdown, folder
+  structure, entry points, and the architecture map, plus the message
+  *“No visual interface detected. This repository appears to be a CLI,
+  library, backend, or data project.”*
 
-## Project detection
+## How the safe preview works
 
-The analyzer classifies repositories as: frontend apps (React, Vite, Next.js, and other detected frameworks such as Vue, Svelte, Astro, Angular, Nuxt), monorepos with runnable subdirectories, Chrome extensions (via `manifest.json` with a `manifest_version`), Python projects (via `pyproject.toml`, `requirements.txt`, `setup.py`, etc.), Node CLI tools (via a `bin` entry), and libraries (published entry points without app scripts).
+- Real HTML pages (including extension popups) are **sanitized**: scripts,
+  iframes/objects/embeds, event handlers, `javascript:` URLs, and form
+  actions are stripped; local stylesheets are inlined (with remote
+  `@import`/`url()` references removed); local images become data URIs and
+  external images become neutral placeholders.
+- JSX components are converted into **wireframes** by walking the AST:
+  static structure, text, and class names are kept; dynamic expressions
+  become placeholders; child components render as labeled blocks; `map`
+  callbacks and conditionals render their primary branch.
+- Vue templates, Svelte markup, and Astro templates are sanitized the same
+  way (framework directives removed).
+- Every preview renders in `<iframe sandbox="" srcDoc>` — the empty
+  `sandbox` attribute disables script execution at the browser level, so
+  even a sanitizer escape cannot run code.
 
-Analysis and preview are independent statuses. Every repository gets **Analysis available**; runnable React/Next/Vite projects additionally get **Live preview available**; other types show **Live preview unsupported** with a specific reason (e.g. Chrome extensions must load into a browser's extension system; the in-browser sandbox runs Node.js, not Python). Preview boot failures surface as **Live preview failed** with the live npm install/dev log.
+## Code connection, architecture, and tracing
 
-## Sandboxing model
+Click any gallery card to see its **code connection**: source file, symbol,
+line numbers, imports, dependents, referenced styles and assets, and the
+matching node highlighted in the architecture graph (routes → components →
+services → files, with fan-in/risk highlighting).
 
-Live previews use WebContainers rather than a server-side sandbox (Docker/E2B/etc.). Repository code executes only inside the visitor's own cross-origin-isolated browser tab, which removes the server-side untrusted-code problem entirely and works within Vercel's serverless model — the server's only job is fetching and packaging source files. `next.config.ts` sets the required `Cross-Origin-Embedder-Policy: require-corp` and `Cross-Origin-Opener-Policy: same-origin` headers; without them the runtime silently fails to boot. Use a Chromium-based browser for previews.
+Ask questions like “How does the settings page work?” or “Which files
+control dark mode?” in the trace panel. Answers cite only files and symbols
+that exist in the analyzed repository — citations are validated before they
+are shown and invalid ones are rejected.
 
-Bundled demo fixtures (instant, offline):
+### Trace providers
 
-- `https://github.com/repolens-demo/northstar-console` — bundled demo fixture with routes, components, preference storage, and a deployment interaction.
-- `https://github.com/digitalocean/sample-vite-react` — local snapshot pinned to commit `ce1b05ce493249f241bceee9ea30513b88697cc0` (see `fixtures/verified/manifest.json`).
+- **Deterministic local analyzer (default)** — no API key required. Results
+  are labeled *Local analysis* and never presented as model output.
+- **OpenAI (optional)** — set `OPENAI_API_KEY` to route trace questions
+  through an OpenAI model (`OPENAI_TRACE_MODEL`, default `gpt-5.6`;
+  `OPENAI_API_BASE_URL` supports any OpenAI-compatible endpoint). The same
+  citation validation applies to model output.
+
+## Optional live execution preview
+
+For runnable React/Next.js/Vite projects, an optional *live execution
+preview* can boot the actual app inside a sandboxed in-browser Node.js
+runtime (WebContainers) in the visitor's own tab. This is an enhancement,
+not the product's core — analysis and the interface gallery work for every
+repository without executing anything. `next.config.ts` sets the
+cross-origin-isolation headers WebContainers requires.
 
 ## Setup
 
@@ -38,15 +93,35 @@ npm install
 npm run dev
 ```
 
-Environment variables (`.env.local` locally, project settings on Vercel):
+Environment variables (all optional, `.env.local` locally):
 
-- `LLAMA_API_KEY` — required for feature tracing. Uses the Llama API's OpenAI-compatible endpoint.
-- `LLAMA_TRACE_MODEL` — optional, defaults to `Llama-4-Maverick-17B-128E-Instruct-FP8`.
-- `LLAMA_API_BASE_URL` — optional, defaults to `https://api.llama.com/compat/v1`.
-- `GITHUB_TOKEN` — optional but recommended; raises GitHub REST API rate limits for repository fetching.
+- `GITHUB_TOKEN` — raises GitHub REST API rate limits for repository fetching.
+- `OPENAI_API_KEY` — enables the optional OpenAI trace provider.
+- `OPENAI_TRACE_MODEL`, `OPENAI_API_BASE_URL` — override model/endpoint.
 
-Run the test suite (43 tests) with `npm test`, or the end-to-end health check with `npm run health`.
+Run the test suite with `npm test` (75 tests), or the end-to-end health
+check with `npm run health`.
+
+## Repository input
+
+Any public `github.com` repository URL works. `http://` and `https://`,
+`www.`, missing schemes, trailing slashes, `.git` suffixes, and deep links
+such as `/tree/<branch>` or `/blob/<path>` are all normalized to the
+repository root. Private, missing, oversized, or truncated repositories
+produce specific error messages.
+
+Bundled demo fixtures (instant, offline):
+
+- `https://github.com/repolens-demo/northstar-console` — Vite dashboard demo.
+- `https://github.com/digitalocean/sample-vite-react` — pinned local snapshot.
+- `fixtures/chrome-extension-demo/` — Chrome extension fixture used by the
+  interface-detection tests.
 
 ## Limits
 
-Public repositories only. Fetching is bounded (2,000 supported files, 512 KB per text file, 20 MB total; small binary assets are best-effort). Preview bundles are capped at 2,000 files / 15 MB. Environment files (`.env*`) are never fetched or shipped to the browser except `.env.example`. Previews are JavaScript/TypeScript projects that run with `npm install` plus a `dev`/`start`/`serve`/`preview` script.
+Public repositories only. Fetching is bounded (2,000 supported files,
+512 KB per text file, 20 MB total; small binary assets best-effort).
+`.env*` files are never fetched (except `.env.example`). Wireframes show
+the primary branch of conditional UI and cannot execute runtime logic —
+they are structural previews, not pixel-perfect renders. Tailwind class
+styling is detected but not compiled into wireframes.

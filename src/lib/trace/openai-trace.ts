@@ -3,18 +3,20 @@ import type { RelevantSourceContext } from "./source-context";
 import { parseTraceResult } from "./trace-result";
 
 /**
- * Feature tracing via the Llama API (https://api.llama.com), which offers a
- * free developer tier. The OpenAI-compatible chat completions endpoint is
- * used so structured JSON-schema output keeps working exactly as before.
+ * Optional feature tracing via the OpenAI chat completions API. This
+ * provider is entirely optional: when OPENAI_API_KEY is not configured,
+ * RepoLens uses the deterministic local analyzer instead (see
+ * local-trace.ts) and clearly labels the result as local analysis.
  *
  * Configuration:
- * - LLAMA_API_KEY      (required)
- * - LLAMA_API_BASE_URL (optional, defaults to https://api.llama.com/compat/v1)
- * - LLAMA_TRACE_MODEL  (optional, defaults to Llama-4-Maverick-17B-128E-Instruct-FP8)
+ * - OPENAI_API_KEY      (optional — enables this provider)
+ * - OPENAI_API_BASE_URL (optional, defaults to https://api.openai.com/v1;
+ *                        any OpenAI-compatible endpoint works)
+ * - OPENAI_TRACE_MODEL  (optional, defaults to gpt-5.6)
  */
 
-const DEFAULT_BASE_URL = "https://api.llama.com/compat/v1";
-const DEFAULT_MODEL = "Llama-4-Maverick-17B-128E-Instruct-FP8";
+const DEFAULT_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_MODEL = "gpt-5.6";
 
 const TRACE_RESULT_SCHEMA = {
   type: "object",
@@ -49,10 +51,15 @@ const TRACE_RESULT_SCHEMA = {
 } as const;
 
 export class ModelConfigurationError extends Error {
-  constructor(message = "Feature tracing requires LLAMA_API_KEY configuration.") {
+  constructor(message = "The OpenAI trace provider requires OPENAI_API_KEY configuration.") {
     super(message);
     this.name = "ModelConfigurationError";
   }
+}
+
+/** True when the optional OpenAI provider is configured. */
+export function openAiTraceConfigured(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 
 export class TraceModelError extends Error {
@@ -76,7 +83,7 @@ function responseText(payload: ChatCompletionsPayload): string | null {
       if (typeof part.text === "string" && part.text.trim()) return part.text;
     }
   }
-  // Native Llama API shape fallback.
+  // Some OpenAI-compatible providers use this alternate response shape.
   const native = payload.completion_message?.content;
   if (typeof native === "string" && native.trim()) return native;
   if (native && typeof native === "object" && typeof native.text === "string") return native.text;
@@ -102,15 +109,15 @@ function repositoryIndex(analysis: AnalyzeResult, context: RelevantSourceContext
     .join("\n");
 }
 
-export async function requestTraceFromLlama(
+export async function requestTraceFromOpenAi(
   question: string,
   analysis: AnalyzeResult,
   context: RelevantSourceContext,
   options: { apiKey?: string; model?: string; baseUrl?: string; fetcher?: typeof fetch } = {},
 ): Promise<TraceResult> {
-  const apiKey = options.apiKey ?? process.env.LLAMA_API_KEY;
-  const model = options.model ?? process.env.LLAMA_TRACE_MODEL ?? DEFAULT_MODEL;
-  const baseUrl = (options.baseUrl ?? process.env.LLAMA_API_BASE_URL ?? DEFAULT_BASE_URL).replace(
+  const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
+  const model = options.model ?? process.env.OPENAI_TRACE_MODEL ?? DEFAULT_MODEL;
+  const baseUrl = (options.baseUrl ?? process.env.OPENAI_API_BASE_URL ?? DEFAULT_BASE_URL).replace(
     /\/$/,
     "",
   );

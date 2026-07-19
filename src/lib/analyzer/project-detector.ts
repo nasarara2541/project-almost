@@ -27,6 +27,7 @@ type PackageJson = {
 };
 
 const PYTHON_MANIFESTS = ["pyproject.toml", "requirements.txt", "setup.py", "setup.cfg", "Pipfile"];
+const BACKEND_MANIFESTS = ["go.mod", "Cargo.toml", "Gemfile", "composer.json", "pom.xml", "build.gradle"];
 
 /** True when a manifest.json at this path declares a Chrome/WebExtension. */
 async function isChromeExtensionManifest(filePath: string): Promise<boolean> {
@@ -48,6 +49,13 @@ async function detectChromeExtension(root: string): Promise<boolean> {
 
 async function detectPythonProject(root: string): Promise<boolean> {
   for (const manifest of PYTHON_MANIFESTS) {
+    if (await fileExists(path.join(root, manifest))) return true;
+  }
+  return false;
+}
+
+async function detectBackendProject(root: string): Promise<boolean> {
+  for (const manifest of BACKEND_MANIFESTS) {
     if (await fileExists(path.join(root, manifest))) return true;
   }
   return false;
@@ -273,6 +281,7 @@ export async function detectRepositoryProject(
   const availableCandidate = previewCandidates.find((candidate) => candidate.available);
   const frameworkSet = allFrameworks;
   const single = subprojects.length === 1 ? subprojects[0] : null;
+  const backendManifest = await detectBackendProject(repository.sourcePath);
   const projectType: RepositoryProjectInfo["projectType"] = monorepo
     ? "monorepo"
     : single?.framework === "chrome-extension" || (frameworkSet.has("chrome-extension") && subprojects.length <= 1)
@@ -289,9 +298,11 @@ export async function detectRepositoryProject(
               ? "frontend"
             : frameworkSet.has("python")
               ? "python"
-              : packageFiles.length > 0
-                ? "library"
-                : "unknown";
+              : backendManifest
+                ? "backend"
+                : packageFiles.length > 0
+                  ? "library"
+                  : "unknown";
 
   return {
     projectType,

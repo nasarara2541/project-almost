@@ -1,4 +1,4 @@
-import type { RepositoryProjectInfo } from "@/types/api";
+import type { AnalyzeResult, RepositoryProjectInfo } from "@/types/api";
 
 const projectTypeLabels: Record<RepositoryProjectInfo["projectType"], string> = {
   frontend: "Frontend application",
@@ -7,6 +7,7 @@ const projectTypeLabels: Record<RepositoryProjectInfo["projectType"], string> = 
   cli: "Node.js CLI tool",
   "chrome-extension": "Chrome extension",
   python: "Python project",
+  backend: "Backend service",
   mixed: "Mixed project",
   unknown: "Unclassified",
 };
@@ -19,25 +20,24 @@ const frameworkLabels: Record<string, string> = {
 };
 
 type ProjectSummaryProps = {
-  project: RepositoryProjectInfo;
-  isStartingPreview: boolean;
-  onStartPreview: (root: string) => void;
+  analysis: AnalyzeResult;
 };
 
-export function ProjectSummary({
-  project,
-  isStartingPreview,
-  onStartPreview,
-}: ProjectSummaryProps) {
+export function ProjectSummary({ analysis }: ProjectSummaryProps) {
+  const project = analysis.project;
+
   return (
     <section className="project-summary" aria-labelledby="project-summary-heading">
       <div className="project-summary__heading">
         <div>
-          <p className="section-label">Analysis available</p>
-          <h2 id="project-summary-heading">Repository profile</h2>
+          <p className="section-label">Repository overview</p>
+          <h2 id="project-summary-heading">{analysis.name}</h2>
+          {project.description ? <p className="project-description">{project.description}</p> : null}
         </div>
-        <span className={`availability availability--${project.previewAvailable ? "ready" : "unavailable"}`}>
-          {project.previewAvailable ? "Preview available" : "Analysis only"}
+        <span
+          className={`availability availability--${analysis.interface.hasVisualInterface ? "ready" : "unavailable"}`}
+        >
+          {analysis.interface.hasVisualInterface ? "Interface detected" : "No visual interface"}
         </span>
       </div>
 
@@ -45,52 +45,77 @@ export function ProjectSummary({
         <div><dt>Project type</dt><dd>{projectTypeLabels[project.projectType]}</dd></div>
         <div><dt>Detected stack</dt><dd>{project.frameworks.map((framework) => frameworkLabels[framework] ?? framework).join(", ") || "None detected"}</dd></div>
         <div><dt>Package managers</dt><dd>{project.packageManagers.join(", ") || "Unknown"}</dd></div>
-        <div><dt>Repository shape</dt><dd>{project.monorepo ? "Monorepo" : "Single project"}</dd></div>
+        <div><dt>Repository shape</dt><dd>{project.monorepo ? `Monorepo · ${project.subprojects.length} packages` : "Single project"}</dd></div>
+        {project.defaultBranch ? <div><dt>Default branch</dt><dd>{project.defaultBranch}</dd></div> : null}
+        <div><dt>Styling</dt><dd>{analysis.interface.tailwind ? "Tailwind CSS" : analysis.interface.styleFiles.length ? "CSS stylesheets" : "None detected"}</dd></div>
       </dl>
 
-      <div className="preview-availability">
-        <strong>{project.previewAvailable ? "Live preview available" : "Live preview unavailable"}</strong>
-        <p>{project.previewReason}</p>
+      {analysis.languages.length > 0 ? (
+        <div className="language-breakdown" aria-label="Language breakdown">
+          <strong>Languages</strong>
+          <div className="language-bar" role="img" aria-label={analysis.languages.map((language) => `${language.name} ${language.percent}%`).join(", ")}>
+            {analysis.languages.slice(0, 6).map((language, index) => (
+              <span
+                key={language.name}
+                style={{ width: `${Math.max(language.percent, 2)}%` }}
+                className={`language-bar__segment language-bar__segment--${index}`}
+                title={`${language.name} ${language.percent}%`}
+              />
+            ))}
+          </div>
+          <ul>
+            {analysis.languages.slice(0, 6).map((language, index) => (
+              <li key={language.name}>
+                <i className={`language-bar__segment--${index}`} />
+                {language.name} <small>{language.percent}% · {language.files} files</small>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="overview-columns">
+        {analysis.entryPoints.length > 0 ? (
+          <div>
+            <strong>Entry points</strong>
+            <ul>{analysis.entryPoints.slice(0, 6).map((entry) => <li key={entry.file}><code>{entry.file}</code></li>)}</ul>
+          </div>
+        ) : null}
+        {analysis.importantFiles.length > 0 ? (
+          <div>
+            <strong>Important files</strong>
+            <ul>{analysis.importantFiles.slice(0, 8).map((file) => <li key={file}><code>{file}</code></li>)}</ul>
+          </div>
+        ) : null}
+        {analysis.folders.length > 0 ? (
+          <div>
+            <strong>Folder structure</strong>
+            <ul className="folder-outline">{analysis.folders.slice(0, 14).map((folder) => <li key={folder}><code>{folder}</code></li>)}</ul>
+          </div>
+        ) : null}
       </div>
 
-      <div className="subprojects">
-        <div className="subprojects__heading">
-          <strong>Detected subprojects</strong>
-          <span>{project.subprojects.length}</span>
-        </div>
-        {project.subprojects.length ? (
+      {project.subprojects.length > 1 ? (
+        <div className="subprojects">
+          <div className="subprojects__heading">
+            <strong>Detected packages</strong>
+            <span>{project.subprojects.length}</span>
+          </div>
           <ul>
-            {project.subprojects.map((subproject) => {
-              const preview = project.previewCandidates.find((candidate) => candidate.root === subproject.root);
-              return (
-                <li key={`${subproject.root}:${subproject.name}`}>
-                  <div>
-                    <strong>{subproject.name}</strong>
-                    <code>{subproject.root}</code>
-                  </div>
-                  <span>{frameworkLabels[subproject.framework] ?? subproject.framework}</span>
-                  <span>{subproject.packageManager}</span>
-                  {preview?.available ? (
-                    <button
-                      type="button"
-                      onClick={() => onStartPreview(subproject.root)}
-                      disabled={isStartingPreview}
-                    >
-                      {isStartingPreview ? "Starting…" : "Start Live Preview"}
-                    </button>
-                  ) : (
-                    <small title={preview?.reason ?? undefined}>
-                      {subproject.runnable ? "Analysis only" : "Not runnable"}
-                    </small>
-                  )}
-                </li>
-              );
-            })}
+            {project.subprojects.map((subproject) => (
+              <li key={`${subproject.root}:${subproject.name}`}>
+                <div>
+                  <strong>{subproject.name}</strong>
+                  <code>{subproject.root}</code>
+                </div>
+                <span>{frameworkLabels[subproject.framework] ?? subproject.framework}</span>
+                <span>{subproject.packageManager}</span>
+                <small>{subproject.runnable ? "runnable" : "not runnable"}</small>
+              </li>
+            ))}
           </ul>
-        ) : (
-          <p className="subprojects__empty">No runnable package roots were detected. Static analysis is still available above.</p>
-        )}
-      </div>
+        </div>
+      ) : null}
     </section>
   );
 }

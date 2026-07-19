@@ -3,78 +3,71 @@
 ## Before recording
 
 1. Run `npm install`.
-2. Optionally configure `OPENAI_API_KEY` in `.env.local` for the live GPT-5.6 trace. Do not describe the trace as live GPT output without a working key.
-3. Run `npm run health`, then `npm run dev`.
+2. Optionally set `OPENAI_API_KEY` in `.env.local`. Without it the trace
+   panel uses the deterministic local analyzer and shows a “Local analysis”
+   badge — never claim model output without a working key.
+3. Run `npm test`, then `npm run dev`.
 4. Open `http://localhost:3000` at a laptop-sized viewport.
 5. Leave the prefilled Northstar repository URL unchanged.
 
 ## 0:00–0:25 — The problem
 
-Show the RepoLens hero and “How it works” panel.
+Show the hero: “What does this repo look like — and which code makes it?”
 
-Say:
+> “When you open an unfamiliar repository you can read the code, but you
+> can't see the product. RepoLens is a GitHub-to-interface visualizer: it
+> reconstructs the interface a repository contains — safely, without
+> executing any of its code — and connects every screen back to the source.”
 
-> “Developers can see what a product does, or inspect how its repository is structured, but connecting those two views still takes time. RepoLens is the AI preview layer for a codebase: it lets you see the product from the outside and understand it from the inside at the same time.”
+## 0:25–1:05 — Overview + interface gallery
 
-Point out the visible “Verified demo repository” label.
+Click **Analyze Repository**. Walk through the repository overview: project
+type, frameworks, package manager, language breakdown, folder structure,
+entry points.
 
-## 0:25–0:55 — Safe live preview
+Scroll to the **Interface preview** gallery:
 
-Click **Analyze Repository**. Show the detected project type, frameworks, package manager, and `.` runnable subproject. Then click **Start Live Preview**.
+> “These previews are reconstructed statically from the source: HTML pages
+> are sanitized, JSX components become wireframes, and everything renders in
+> a fully sandboxed frame. Scripts never run.”
 
-As the status moves through queued, analyzing, and starting, say:
+Point at the screens row (homepage, `/settings`) and the components row with
+role badges (layout, card, control).
 
-> “This hackathon build never runs an arbitrary submitted repository. The URL maps to reviewed local source, starts with a fixed controlled command, receives no application secrets, and expires automatically.”
+## 1:05–1:45 — Code connection
 
-When ready, show the Northstar preview. Click **Settings** inside the preview and briefly toggle a preference.
+Click the `SettingsPage` card. Show the **Code connection** panel: source
+file, symbol, line range, imports, dependents — and the highlighted node in
+the architecture graph below.
 
-## 0:55–1:30 — Architecture beside the product
+> “Every visual element links to the file and function that create it, and
+> to its place in the dependency graph.”
 
-Move attention to the architecture panel.
+## 1:45–2:20 — Ask questions
 
-Say:
+In the trace panel ask: “How does the settings page work?”
 
-> “RepoLens parsed the verified TypeScript source without executing it. It detected routes, React components, service functions, entry points, files, and relative imports.”
+> “Answers are grounded: every step cites a real file and symbol, and
+> citations are validated against the repository before they're shown. With
+> no API key configured this is the deterministic local analyzer — clearly
+> labeled. With OPENAI_API_KEY set, the model provider takes over with the
+> same validation.”
 
-Click the `/settings` route or `SettingsPage` component. Point out:
+Click a step to jump the graph highlight.
 
-- The highlighted connected path.
-- `src/pages/SettingsPage.tsx`.
-- The component name and source lines.
-- Imports, dependents, fan-in, and the file-path copy button.
+## 2:20–2:50 — It works for any repository
 
-## 1:30–2:20 — Grounded feature trace
+Mention (or show with a second URL) the other repository classes:
 
-Click the sample question **How does the settings page work?**, then click **Trace feature**.
+> “A Chrome extension shows its popup interface and controls. A monorepo
+> gets a project picker. And a Python CLI or backend repo doesn't fail — it
+> shows the project type, structure, and architecture with a clear ‘no
+> visual interface’ message.”
 
-If `OPENAI_API_KEY` is configured and the request succeeds, say:
+## 2:50–3:00 — Close
 
-> “GPT-5.6 receives only the graph-ranked source excerpts, not the whole repository. It must return strict TraceResult JSON. RepoLens validates every file and symbol, replaces line numbers with analyzer-owned locations, and blocks invented citations.”
+Show the optional live execution preview section at the bottom.
 
-Show the ordered feature flow. Click a trace step and point out how the corresponding source node and connecting path remain pink. Use **Copy** on the trace result.
-
-If no API key is configured, say instead:
-
-> “The demo environment has no model key configured, so RepoLens reports that state explicitly rather than pretending this is live GPT output. The deterministic test adapters exercise the same parser, citation validator, and highlighting pipeline without network calls.”
-
-Then use the architecture panel to show the settings path manually.
-
-## 2:20–2:40 — Hallucination boundary
-
-Say:
-
-> “Unknown files and symbols never reach the interface. Invalid JSON and citations are rejected, and unrelated questions return a low-confidence empty flow without calling the model.”
-
-Mention that runtime DOM-to-code correlation is deliberately deferred; this version stays grounded in static source and graph evidence.
-
-## 2:40–3:00 — Reliability and close
-
-Click **Reset analysis** and show the interface returning focus to the repository input.
-
-Say:
-
-> “The final health check starts the verified preview, analyzes it, verifies the trace fallback, expires the session, and confirms cleanup. RepoLens connects what users see, how the product works, and where it lives in code—safely, visibly, and with citations.”
-
-End on the hero:
-
-> “RepoLens: see the product, trace the code.”
+> “For runnable frontend projects, a live WebContainers preview is available
+> as an optional enhancement — but the product never depends on executing
+> unknown code. RepoLens: see the interface inside any repository.”

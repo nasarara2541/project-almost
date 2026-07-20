@@ -29,10 +29,10 @@ export class RepositoryValidationError extends Error {
 }
 
 /**
- * Accepts the common ways people paste a GitHub repository URL — http or
+ * Accepts the common ways people paste a GitHub repository URL (http or
  * https, an optional www. prefix, a missing scheme, trailing slashes, a
  * trailing .git, and deep links such as /tree/<branch>, /blob/<path>,
- * /issues, or /pulls — and canonicalizes all of them to
+ * /issues, or /pulls) and canonicalizes all of them to
  * `https://github.com/<owner>/<repository>`.
  */
 export function normalizeGitHubRepositoryUrl(input: string): string {

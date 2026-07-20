@@ -290,12 +290,12 @@ function renderJsxExpression(
   if (ts.isJsxElement(expression) || ts.isJsxSelfClosingElement(expression) || ts.isJsxFragment(expression)) {
     return renderJsxChild(expression, sourceFile, budget, depth);
   }
-  // {condition && <Jsx/>} and {condition ? <A/> : <B/>} — show the primary branch.
+  // {condition && <Jsx/>} and {condition ? <A/> : <B/>}: show the primary branch.
   if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
     return renderJsxExpression(expression.right, sourceFile, budget, depth);
   }
   if (ts.isConditionalExpression(expression)) {
-    // `loading ? <Spinner/> : <Content/>` — the loaded branch is the real UI.
+    // `loading ? <Spinner/> : <Content/>`: the loaded branch is the real UI.
     const conditionText = expression.condition.getText(sourceFile);
     const branch = /loading|pending|skeleton|isfetching|error/i.test(conditionText)
       ? expression.whenFalse
@@ -305,7 +305,7 @@ function renderJsxExpression(
   if (ts.isParenthesizedExpression(expression)) {
     return renderJsxExpression(expression.expression, sourceFile, budget, depth);
   }
-  // {items.map(item => <Jsx/>)} — render the item template once.
+  // {items.map(item => <Jsx/>)}: render the item template once.
   if (ts.isCallExpression(expression) && ts.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "map") {
     const callback = expression.arguments[0];
     if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {

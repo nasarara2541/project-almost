@@ -16,7 +16,7 @@ export type TraceModel = (
  *
  * Provider selection: the OpenAI model is used only when OPENAI_API_KEY is
  * configured; otherwise the deterministic local analyzer produces the
- * answer and the result is labeled `provider: "local"` — it is never
+ * answer and the result is labeled `provider: "local"`. It is never
  * presented as model output. Both paths run the same citation validation.
  */
 export async function traceRepositoryFeature(

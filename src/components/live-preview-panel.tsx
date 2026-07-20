@@ -5,7 +5,7 @@ import type { AnalyzeResult, PreviewSession, PreviewSessionStatus } from "@/type
 /**
  * Optional enhancement: run a supported React/Next/Vite project live inside
  * a sandboxed in-browser Node.js runtime (WebContainers). This is never the
- * primary preview — the static interface gallery works for every repository
+ * primary preview; the static interface gallery works for every repository
  * without executing code. Repository code only ever runs inside the
  * visitor's own browser tab, never on the server.
  */
@@ -48,7 +48,7 @@ export function LivePreviewPanel({
           <p>
             The gallery above is static and safe for any repository. For runnable React, Next.js,
             and Vite projects you can additionally boot the real app in a sandboxed WebContainer
-            inside your own browser tab — no repository code runs on the server.
+            inside your own browser tab. No repository code runs on the server.
           </p>
         </div>
         {session ? (
@@ -61,14 +61,33 @@ export function LivePreviewPanel({
       {candidates.length === 0 ? (
         <p className="live-preview__unavailable">{analysis.project.previewReason}</p>
       ) : session?.status === "ready" && session.previewUrl ? (
-        <iframe
-          className="preview-frame"
-          src={session.previewUrl}
-          title="Live in-browser repository preview"
-          sandbox="allow-forms allow-scripts allow-same-origin allow-popups"
-          referrerPolicy="no-referrer"
-          allow="cross-origin-isolated"
-        />
+        <>
+          <div className="preview-frame-toolbar">
+            <span>
+              Blank preview? It usually means a client-side error inside the frame. This URL only
+              resolves through this tab&apos;s WebContainer connection, so it will not load on its own
+              in a new tab. To see the real console: open your browser&apos;s DevTools on this page,
+              then in the Console panel&apos;s context dropdown (usually labeled &quot;top&quot;) switch to this
+              iframe&apos;s frame to read its errors directly.
+            </span>
+          </div>
+          <iframe
+            className="preview-frame"
+            src={session.previewUrl}
+            title="Live in-browser repository preview"
+            sandbox="allow-forms allow-scripts allow-same-origin allow-popups"
+            referrerPolicy="no-referrer"
+            allow="cross-origin-isolated"
+          />
+          {previewLogs.length > 0 ? (
+            <details className="preview-log-details">
+              <summary>Runtime log ({previewLogs.length} lines)</summary>
+              <pre className="preview-log" aria-label="Preview runtime log">
+                {previewLogs.slice(-40).join("\n")}
+              </pre>
+            </details>
+          ) : null}
+        </>
       ) : (
         <div className="live-preview__controls">
           {candidates.map((candidate) => (

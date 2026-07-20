@@ -23,7 +23,7 @@ const suggestions = [
 function formatTrace(trace: TraceResult): string {
   const steps = trace.steps.map(
     (step, index) =>
-      `${index + 1}. ${step.location.functionName ?? step.location.file} — ${step.location.file}${step.location.lineStart ? `:${step.location.lineStart}` : ""}\n${step.explanation}`,
+      `${index + 1}. ${step.location.functionName ?? step.location.file} (${step.location.file}${step.location.lineStart ? `:${step.location.lineStart}` : ""})\n${step.explanation}`,
   );
   return `${trace.question}\nConfidence: ${trace.confidence}\n\n${steps.join("\n\n")}`;
 }
@@ -120,7 +120,7 @@ export function TracePanel({
                   className={`provider-badge provider-badge--${trace.provider}`}
                   title={
                     trace.provider === "local"
-                      ? "Produced by the deterministic local analyzer — no AI model was used."
+                      ? "Produced by the deterministic local analyzer. No AI model was used."
                       : "Produced by the configured OpenAI model and validated against the repository."
                   }
                 >

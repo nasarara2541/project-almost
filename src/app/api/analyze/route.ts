@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       const status = error.code === "NOT_FOUND" ? 404 : error.code === "RATE_LIMITED" ? 429 : 422;
       return NextResponse.json({ error: error.message, code: error.code }, { status });
     }
+    console.error("POST /api/analyze failed:", error);
     return NextResponse.json(
       { error: "The public repository could not be analyzed." },
       { status: 500 },

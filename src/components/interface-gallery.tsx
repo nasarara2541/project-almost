@@ -12,7 +12,7 @@ import type {
 /**
  * The interface gallery: safe static previews of every detected screen and
  * component, reconstructed from repository source. Previews render in fully
- * sandboxed iframes (`sandbox=""` — scripts are disabled by the browser), so
+ * sandboxed iframes (`sandbox=""`, so scripts are disabled by the browser), so
  * no repository code ever executes.
  */
 
@@ -153,7 +153,7 @@ export function InterfaceGallery({ analysis, selectedItemId, onSelectItem }: Int
             tabIndex={-1}
           />
         ) : (
-          <span className="gallery-card__placeholder">No static preview — source only</span>
+          <span className="gallery-card__placeholder">No static preview, source only</span>
         )}
       </span>
       <span className="gallery-card__meta">

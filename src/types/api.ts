@@ -177,7 +177,7 @@ export type InterfaceScreenKind =
 /**
  * A previewable screen of the repository's interface: an HTML page, a route
  * component, or a Chrome-extension popup/options page. `previewHtml` is a
- * fully sanitized, script-free document reconstructed from source — it is
+ * fully sanitized, script-free document reconstructed from source. It is
  * rendered in a sandboxed iframe and never executes repository code.
  */
 export type InterfaceScreen = {

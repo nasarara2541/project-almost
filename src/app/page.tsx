@@ -6,6 +6,7 @@ import { InterfaceGallery } from "@/components/interface-gallery";
 import { LivePreviewPanel } from "@/components/live-preview-panel";
 import { ProjectSummary } from "@/components/project-summary";
 import { RepositoryForm } from "@/components/repository-form";
+import { SectionNav } from "@/components/section-nav";
 import { TracePanel } from "@/components/trace-panel";
 import { BUNDLED_FIXTURE_REPO_URL } from "@/lib/preview/constants";
 import { findTraceNodeId } from "@/lib/trace/highlighting";
@@ -223,7 +224,7 @@ export default function Home() {
 
       <header className="hero" id="top">
         <p className="eyebrow">GitHub-to-interface visualizer</p>
-        <h1>What does this repo look like — and which code makes it?</h1>
+        <h1>What does this repo look like, and which code makes it?</h1>
         <p className="hero__copy">
           Paste a public GitHub repository. RepoLens inspects the source read-only, reconstructs a
           safe visual preview of the interface it contains, and connects every screen and component
@@ -238,7 +239,7 @@ export default function Home() {
         </div>
         <ol>
           <li><span>1</span><div><strong>Fetch &amp; analyze</strong><p>Read metadata, manifests, and source read-only. Detect the project type, frameworks, and monorepo packages.</p></div></li>
-          <li><span>2</span><div><strong>Detect the interface</strong><p>Find pages, routes, popups, components, styles, and assets — including Chrome-extension popups.</p></div></li>
+          <li><span>2</span><div><strong>Detect the interface</strong><p>Find pages, routes, popups, components, styles, and assets, including Chrome-extension popups.</p></div></li>
           <li><span>3</span><div><strong>Preview &amp; connect</strong><p>Explore a static interface gallery, click any screen to see its source, and trace features through the architecture graph.</p></div></li>
         </ol>
       </section>
@@ -266,6 +267,8 @@ export default function Home() {
 
       {analysis ? (
         <>
+          <SectionNav />
+
           <div className="results-toolbar">
             <span className="workspace__address">{analysis.repoUrl}</span>
             <button className="reset-button" type="button" onClick={handleReset}>
@@ -273,15 +276,19 @@ export default function Home() {
             </button>
           </div>
 
-          <ProjectSummary analysis={analysis} />
+          <div id="project-summary">
+            <ProjectSummary analysis={analysis} />
+          </div>
 
-          <InterfaceGallery
-            analysis={analysis}
-            selectedItemId={selectedGalleryId}
-            onSelectItem={handleSelectGalleryItem}
-          />
+          <div id="interface">
+            <InterfaceGallery
+              analysis={analysis}
+              selectedItemId={selectedGalleryId}
+              onSelectItem={handleSelectGalleryItem}
+            />
+          </div>
 
-          <div className="code-insight-workspace">
+          <div className="code-insight-workspace" id="code-insight">
             <ArchitecturePanel
               analysis={analysis}
               isLoading={false}
@@ -301,14 +308,16 @@ export default function Home() {
             />
           </div>
 
-          <LivePreviewPanel
-            analysis={analysis}
-            session={session}
-            previewLogs={previewLogs}
-            isStarting={isStartingPreview}
-            onStartPreview={handleStartPreview}
-            onStopPreview={handleStopPreview}
-          />
+          <div id="live-preview">
+            <LivePreviewPanel
+              analysis={analysis}
+              session={session}
+              previewLogs={previewLogs}
+              isStarting={isStartingPreview}
+              onStartPreview={handleStartPreview}
+              onStopPreview={handleStopPreview}
+            />
+          </div>
         </>
       ) : null}
     </main>

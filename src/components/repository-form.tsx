@@ -47,7 +47,7 @@ export function RepositoryForm({
         </button>
       </div>
       <p id="repo-help" className="repo-form__help">
-        Any public github.com repository works — http/https, trailing slashes, and /tree/branch
+        Any public github.com repository works: http/https, trailing slashes, and /tree/branch
         links are normalized. Source is fetched read-only; previews are reconstructed without
         executing repository code.
       </p>

@@ -9,7 +9,7 @@ import { parseTraceResult } from "./trace-result";
  * local-trace.ts) and clearly labels the result as local analysis.
  *
  * Configuration:
- * - OPENAI_API_KEY      (optional — enables this provider)
+ * - OPENAI_API_KEY      (optional, enables this provider)
  * - OPENAI_API_BASE_URL (optional, defaults to https://api.openai.com/v1;
  *                        any OpenAI-compatible endpoint works)
  * - OPENAI_TRACE_MODEL  (optional, defaults to gpt-5.6)

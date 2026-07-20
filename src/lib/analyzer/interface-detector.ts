@@ -20,9 +20,9 @@ import {
 import type { ParsedSourceFile } from "./parser";
 
 /**
- * Detects the visual interface contained in a repository — HTML pages,
+ * Detects the visual interface contained in a repository: HTML pages,
  * route/page components, Chrome-extension popups, standalone components,
- * styles, and assets — and reconstructs safe static previews for them.
+ * styles, and assets, and reconstructs safe static previews for them.
  * Nothing here executes repository code.
  */
 
@@ -267,7 +267,7 @@ async function readChromeManifest(
         return { manifest, manifestPath: candidate, baseDir: path.posix.dirname(candidate) };
       }
     } catch {
-      // Not a Chrome manifest — keep looking.
+      // Not a Chrome manifest, keep looking.
     }
   }
   return null;

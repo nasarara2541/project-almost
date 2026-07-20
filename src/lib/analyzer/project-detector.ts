@@ -257,7 +257,7 @@ export async function detectRepositoryProject(
   const monorepo = packageFiles.length > 1 || workspaceConfigured || hasWorkspaceFile;
   const runnable = subprojects.filter((subproject) => subproject.runnable);
   // Previews now run entirely inside the visitor's browser (WebContainers),
-  // so any runnable React, Next.js, or Vite project is eligible — the code
+  // so any runnable React, Next.js, or Vite project is eligible; the code
   // never executes on shared server infrastructure.
   const supportedRunnerFrameworks = new Set<DetectedFramework>(["vite", "next", "react"]);
   const unsupportedReasons: Partial<Record<DetectedFramework, string>> = {

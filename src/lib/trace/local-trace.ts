@@ -5,7 +5,7 @@ import { rankRelevantNodes } from "./source-context";
  * Deterministic, fully local feature tracing. Used whenever the optional
  * OpenAI provider is not configured. Every step cites a real node from the
  * analyzed architecture graph, so the same citation validation that guards
- * model output passes here by construction — no file or symbol is invented.
+ * model output passes here by construction. No file or symbol is invented.
  */
 
 const MAX_LOCAL_STEPS = 6;

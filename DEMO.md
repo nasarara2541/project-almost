@@ -1,73 +1,71 @@
-# RepoLens three-minute demo script
+# RepoLens three-minute demo
 
 ## Before recording
 
-1. Run `npm install`.
-2. Optionally set `OPENAI_API_KEY` in `.env.local`. Without it the trace
-   panel uses the deterministic local analyzer and shows a “Local analysis”
-   badge — never claim model output without a working key.
-3. Run `npm test`, then `npm run dev`.
-4. Open `http://localhost:3000` at a laptop-sized viewport.
-5. Leave the prefilled Northstar repository URL unchanged.
+1. Run `npm install`, `npm test`, and `npm run dev`.
+2. Open the local URL at a laptop-sized viewport.
+3. Keep the prefilled demo repository for a fast, offline analysis.
 
 ## 0:00–0:25 — The problem
 
-Show the hero: “What does this repo look like — and which code makes it?”
+Show the hero: “What should we improve in this repository?”
 
-> “When you open an unfamiliar repository you can read the code, but you
-> can't see the product. RepoLens is a GitHub-to-interface visualizer: it
-> reconstructs the interface a repository contains — safely, without
-> executing any of its code — and connects every screen back to the source.”
+> “Open-source repositories contain useful work, but contributors often do
+> not know where to start and maintainers do not have time to audit every
+> gap. RepoLens turns repository evidence into prioritized, contribution-ready
+> tasks without executing unknown code.”
 
-## 0:25–1:05 — Overview + interface gallery
+## 0:25–1:05 — Start here
 
-Click **Analyze Repository**. Walk through the repository overview: project
-type, frameworks, package manager, language breakdown, folder structure,
-entry points.
+Click **Analyze Repository**. Show:
 
-Scroll to the **Interface preview** gallery:
+- Overall readiness and category scores.
+- High-priority and actionable finding counts.
+- Supported-file coverage.
+- The coverage disclosure and explicit limitations.
 
-> “These previews are reconstructed statically from the source: HTML pages
-> are sanitized, JSX components become wireframes, and everything renders in
-> a fully sandboxed frame. Scripts never run.”
+> “The score is transparent: every deduction is represented by a finding
+> below. RepoLens also tells us exactly what it could and could not inspect.”
 
-Point at the screens row (homepage, `/settings`) and the components row with
-role badges (layout, card, control).
+## 1:05–1:45 — Evidence-backed gaps
 
-## 1:05–1:45 — Code connection
+Open a finding and point out:
 
-Click the `SettingsPage` card. Show the **Code connection** panel: source
-file, symbol, line range, imports, dependents — and the highlighted node in
-the architecture graph below.
+- Severity and confidence.
+- Why it matters.
+- Exact files and line references.
+- Reliability note.
+- Recommended action and copyable contribution task.
 
-> “Every visual element links to the file and function that create it, and
-> to its place in the dependency graph.”
+Open **possibly unreferenced files** when present:
 
-## 1:45–2:20 — Ask questions
+> “RepoLens names files with no detected static inbound references, while
+> clearly warning that framework conventions and runtime loading must be
+> checked before removal.”
 
-In the trace panel ask: “How does the settings page work?”
+## 1:45–2:15 — Contribution finder
 
-> “Answers are grounded: every step cites a real file and symbol, and
-> citations are validated against the repository before they're shown. With
-> no API key configured this is the deterministic local analyzer — clearly
-> labeled. With OPENAI_API_KEY set, the model provider takes over with the
-> same validation.”
+Show the opportunity cards and copy one task.
 
-Click a step to jump the graph highlight.
+> “These are not generic project ideas. Every task traces back to an audit
+> finding and repository evidence.”
 
-## 2:20–2:50 — It works for any repository
+## 2:15–2:40 — Repository explorer
 
-Mention (or show with a second URL) the other repository classes:
+Search for a file, select it, and show imports, dependents, components, and
+services. Then briefly show the architecture graph and grounded trace.
 
-> “A Chrome extension shows its popup interface and controls. A monorepo
-> gets a project picker. And a Python CLI or backend repo doesn't fail — it
-> shows the project type, structure, and architecture with a clear ‘no
-> visual interface’ message.”
+## 2:40–2:55 — Interface evidence
 
-## 2:50–3:00 — Close
+Show the static interface gallery.
 
-Show the optional live execution preview section at the bottom.
+> “For frontend projects, source is reconstructed into script-disabled
+> structural previews. This is evidence for navigation—not a promise that an
+> arbitrary application can run without its backend or secrets.”
 
-> “For runnable frontend projects, a live WebContainers preview is available
-> as an optional enhancement — but the product never depends on executing
-> unknown code. RepoLens: see the interface inside any repository.”
+## 2:55–3:00 — Close
+
+Download the Markdown report.
+
+> “RepoLens helps maintainers see their gaps and helps contributors choose
+> useful work they can verify.”

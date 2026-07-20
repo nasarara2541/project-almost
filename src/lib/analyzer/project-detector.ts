@@ -4,7 +4,6 @@ import type {
   DetectedFramework,
   DetectedSubproject,
   PackageManager,
-  PreviewCandidate,
   RepositoryProjectInfo,
 } from "../../types/api";
 import type { AnalysisRepository } from "./repository-analyzer";
@@ -32,7 +31,7 @@ const BACKEND_MANIFESTS = ["go.mod", "Cargo.toml", "Gemfile", "composer.json", "
 /** True when a manifest.json at this path declares a Chrome/WebExtension. */
 async function isChromeExtensionManifest(filePath: string): Promise<boolean> {
   try {
-    const raw = await readFile(filePath, "utf8");
+    const raw = await readFile(/* turbopackIgnore: true */ filePath, "utf8");
     const manifest = JSON.parse(raw) as { manifest_version?: unknown };
     return typeof manifest.manifest_version === "number";
   } catch {
@@ -42,21 +41,21 @@ async function isChromeExtensionManifest(filePath: string): Promise<boolean> {
 
 async function detectChromeExtension(root: string): Promise<boolean> {
   for (const candidate of ["manifest.json", "public/manifest.json", "src/manifest.json", "extension/manifest.json"]) {
-    if (await isChromeExtensionManifest(path.join(root, candidate))) return true;
+    if (await isChromeExtensionManifest(path.join(/* turbopackIgnore: true */ root, candidate))) return true;
   }
   return false;
 }
 
 async function detectPythonProject(root: string): Promise<boolean> {
   for (const manifest of PYTHON_MANIFESTS) {
-    if (await fileExists(path.join(root, manifest))) return true;
+    if (await fileExists(path.join(/* turbopackIgnore: true */ root, manifest))) return true;
   }
   return false;
 }
 
 async function detectBackendProject(root: string): Promise<boolean> {
   for (const manifest of BACKEND_MANIFESTS) {
-    if (await fileExists(path.join(root, manifest))) return true;
+    if (await fileExists(path.join(/* turbopackIgnore: true */ root, manifest))) return true;
   }
   return false;
 }
@@ -86,9 +85,9 @@ function normalize(relativePath: string): string {
 async function findPackageFiles(root: string): Promise<string[]> {
   const files: string[] = [];
   async function visit(directory: string): Promise<void> {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
+    for (const entry of await readdir(/* turbopackIgnore: true */ directory, { withFileTypes: true })) {
       if (IGNORED_DIRECTORIES.has(entry.name)) continue;
-      const absolutePath = path.join(directory, entry.name);
+      const absolutePath = path.join(/* turbopackIgnore: true */ directory, entry.name);
       if (entry.isDirectory()) await visit(absolutePath);
       else if (entry.isFile() && entry.name === "package.json") {
         files.push(absolutePath);
@@ -139,7 +138,7 @@ function primaryFramework(frameworks: DetectedFramework[]): DetectedFramework {
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
-  return Boolean((await stat(filePath).catch(() => null))?.isFile());
+  return Boolean((await stat(/* turbopackIgnore: true */ filePath).catch(() => null))?.isFile());
 }
 
 async function detectPackageManager(
@@ -153,15 +152,15 @@ async function detectPackageManager(
   }
   for (const root of [...new Set([packageRoot, repositoryRoot])]) {
     if (
-      (await fileExists(path.join(root, "pnpm-lock.yaml"))) ||
-      (await fileExists(path.join(root, "pnpm-workspace.yaml")))
+      (await fileExists(path.join(/* turbopackIgnore: true */ root, "pnpm-lock.yaml"))) ||
+      (await fileExists(path.join(/* turbopackIgnore: true */ root, "pnpm-workspace.yaml")))
     ) return "pnpm";
-    if (await fileExists(path.join(root, "yarn.lock"))) return "yarn";
+    if (await fileExists(path.join(/* turbopackIgnore: true */ root, "yarn.lock"))) return "yarn";
     if (
-      (await fileExists(path.join(root, "bun.lockb"))) ||
-      (await fileExists(path.join(root, "bun.lock")))
+      (await fileExists(path.join(/* turbopackIgnore: true */ root, "bun.lockb"))) ||
+      (await fileExists(path.join(/* turbopackIgnore: true */ root, "bun.lock")))
     ) return "bun";
-    if (await fileExists(path.join(root, "package-lock.json"))) return "npm";
+    if (await fileExists(path.join(/* turbopackIgnore: true */ root, "package-lock.json"))) return "npm";
   }
   return "unknown";
 }
@@ -188,7 +187,16 @@ export async function detectRepositoryProject(
   let workspaceConfigured = false;
 
   for (const packageFile of packageFiles) {
-    const manifest = JSON.parse(await readFile(packageFile, "utf8")) as PackageJson;
+    let manifest: PackageJson;
+    try {
+      manifest = JSON.parse(
+        await readFile(/* turbopackIgnore: true */ packageFile, "utf8"),
+      ) as PackageJson;
+    } catch {
+      // A malformed package manifest is reported by the audit engine. Project
+      // classification should remain available from the rest of the tree.
+      continue;
+    }
     const root = path.dirname(packageFile);
     const relativeRoot = normalize(path.relative(repository.sourcePath, root));
     const frameworks = detectFrameworks(manifest);
@@ -203,6 +211,7 @@ export async function detectRepositoryProject(
       .map(([name]) => name)
       .sort();
     for (const item of frameworks) allFrameworks.add(item);
+    if (framework !== "unknown") allFrameworks.add(framework);
     if (packageManager !== "unknown") allPackageManagers.add(packageManager);
     if (manifest.workspaces) workspaceConfigured = true;
     subprojects.push({
@@ -251,34 +260,10 @@ export async function detectRepositoryProject(
   }
 
   const hasWorkspaceFile =
-    (await fileExists(path.join(repository.sourcePath, "pnpm-workspace.yaml"))) ||
-    (await fileExists(path.join(repository.sourcePath, "turbo.json"))) ||
-    (await fileExists(path.join(repository.sourcePath, "nx.json")));
+    (await fileExists(path.join(/* turbopackIgnore: true */ repository.sourcePath, "pnpm-workspace.yaml"))) ||
+    (await fileExists(path.join(/* turbopackIgnore: true */ repository.sourcePath, "turbo.json"))) ||
+    (await fileExists(path.join(/* turbopackIgnore: true */ repository.sourcePath, "nx.json")));
   const monorepo = packageFiles.length > 1 || workspaceConfigured || hasWorkspaceFile;
-  const runnable = subprojects.filter((subproject) => subproject.runnable);
-  // Previews now run entirely inside the visitor's browser (WebContainers),
-  // so any runnable React, Next.js, or Vite project is eligible; the code
-  // never executes on shared server infrastructure.
-  const supportedRunnerFrameworks = new Set<DetectedFramework>(["vite", "next", "react"]);
-  const unsupportedReasons: Partial<Record<DetectedFramework, string>> = {
-    "chrome-extension":
-      "Live preview unsupported: Chrome extensions must be loaded into a browser's extension system and cannot run as a web page.",
-    "node-cli":
-      "Live preview unsupported: CLI tools have no web interface to preview. The architecture map and tracing still work.",
-    python:
-      "Live preview unsupported: the in-browser sandbox runs Node.js, not Python. Analysis remains available.",
-    library:
-      "Live preview unsupported: libraries export code for other projects and have nothing to serve.",
-  };
-  const previewCandidates: PreviewCandidate[] = runnable.map((subproject) => {
-    const available = supportedRunnerFrameworks.has(subproject.framework);
-    const reason = available
-      ? "This project can run as a sandboxed in-browser preview."
-      : unsupportedReasons[subproject.framework] ??
-        `Analysis available; live preview unavailable because ${subproject.framework} is not supported by the in-browser runtime yet.`;
-    return { ...subproject, available, reason };
-  });
-  const availableCandidate = previewCandidates.find((candidate) => candidate.available);
   const frameworkSet = allFrameworks;
   const single = subprojects.length === 1 ? subprojects[0] : null;
   const backendManifest = await detectBackendProject(repository.sourcePath);
@@ -310,18 +295,6 @@ export async function detectRepositoryProject(
     packageManagers: [...allPackageManagers],
     monorepo,
     subprojects,
-    previewCandidates,
-    previewAvailable: Boolean(availableCandidate),
-    previewReason:
-      availableCandidate?.reason ??
-      previewCandidates[0]?.reason ??
-      (subprojects.some((subproject) => subproject.framework === "python")
-        ? "Live preview unsupported: the in-browser sandbox runs Node.js, not Python. Analysis remains available."
-        : subprojects.some((subproject) => subproject.framework === "chrome-extension")
-          ? "Live preview unsupported: Chrome extensions must be loaded into a browser's extension system and cannot run as a web page."
-          : subprojects.some((subproject) => subproject.framework === "node-cli")
-            ? "Live preview unsupported: CLI tools have no web interface to preview. The architecture map and tracing still work."
-            : "Analysis available; live preview unavailable because no runnable frontend subproject was detected."),
     defaultBranch: options.defaultBranch,
     description: options.description,
     source: options.verifiedLocal ? "verified-local" : "github-readonly",

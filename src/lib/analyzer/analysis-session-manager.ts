@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import path from "node:path";
-import type { AnalyzeResult, PreviewCandidate, SupportedFramework } from "../../types/api";
+import type { AnalyzeResult } from "../../types/api";
 import { findAllowedRepository, type AllowedRepository } from "../preview/repositories";
 import { fetchPublicGitHubRepository } from "./github-source";
 import { detectRepositoryProject } from "./project-detector";
@@ -86,33 +85,6 @@ export class AnalysisSessionManager {
 
   getResult(analysisId: string): AnalyzeResult | null {
     return this.records.get(analysisId)?.result ?? null;
-  }
-
-  /**
-   * Resolves the on-disk source directory for an in-browser preview. Any
-   * analyzed repository with a runnable React/Next/Vite subproject qualifies:
-   * the code runs sandboxed in the visitor's browser, never on the server.
-   */
-  resolvePreviewRepository(
-    analysisId: string,
-    requestedRoot?: string,
-  ): { repoUrl: string; sourcePath: string; framework: SupportedFramework; root: string } | null {
-    const record = this.records.get(analysisId);
-    if (!record) return null;
-    const candidates = record.result.project.previewCandidates.filter((candidate) => candidate.available);
-    const candidate: PreviewCandidate | undefined = requestedRoot
-      ? candidates.find((item) => item.root === requestedRoot)
-      : candidates[0];
-    if (!candidate) return null;
-    const base = path.resolve(record.repository.sourcePath);
-    const sourcePath = candidate.root === "." ? base : path.resolve(base, candidate.root);
-    if (sourcePath !== base && !sourcePath.startsWith(`${base}${path.sep}`)) return null;
-    return {
-      repoUrl: record.result.repoUrl,
-      sourcePath,
-      framework: candidate.framework as SupportedFramework,
-      root: candidate.root,
-    };
   }
 
   async delete(analysisId: string): Promise<boolean> {

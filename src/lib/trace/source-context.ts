@@ -6,6 +6,11 @@ import type { AnalysisRepository } from "../analyzer/repository-analyzer";
 const MAX_CONTEXT_FILES = 7;
 const MAX_FILE_CHARACTERS = 6_000;
 const MAX_TOTAL_CHARACTERS = 24_000;
+const QUESTION_STOP_WORDS = new Set([
+  "code", "component", "does", "feature", "file", "files", "from", "how",
+  "page", "repository", "screen", "that", "the", "this", "what", "when",
+  "where", "which", "who", "why", "with", "work", "works",
+]);
 
 export type RelevantSourceContext = {
   nodeIds: string[];
@@ -17,7 +22,7 @@ function questionTerms(question: string): Set<string> {
     question
       .toLowerCase()
       .split(/[^a-z0-9_$-]+/)
-      .filter((term) => term.length > 2),
+      .filter((term) => term.length > 2 && !QUESTION_STOP_WORDS.has(term)),
   );
   const expansions: Record<string, string[]> = {
     settings: ["preferences", "toggle", "save"],
@@ -25,6 +30,7 @@ function questionTerms(question: string): Set<string> {
     theme: ["settings", "preferences", "styles", "toggle"],
     deployment: ["deployments", "createdeployment", "home"],
     deploy: ["deployment", "deployments", "createdeployment"],
+    dark: ["theme", "settings", "preferences", "toggle"],
     start: ["main", "entry", "app"],
     begin: ["main", "entry", "app"],
   };

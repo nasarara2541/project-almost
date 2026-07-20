@@ -82,18 +82,18 @@ export async function inventoryWorkspace(sourcePath: string): Promise<WorkspaceI
   async function visit(directory: string, relative: string): Promise<void> {
     let entries;
     try {
-      entries = await readdir(directory, { withFileTypes: true });
+      entries = await readdir(/* turbopackIgnore: true */ directory, { withFileTypes: true });
     } catch {
       return;
     }
     for (const entry of entries) {
       if (IGNORED_DIRECTORIES.has(entry.name)) continue;
-      const absolute = path.join(directory, entry.name);
+      const absolute = path.join(/*turbopackIgnore: true*/ directory, entry.name);
       const relativePath = relative ? `${relative}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         await visit(absolute, relativePath);
       } else if (entry.isFile() && files.length < MAX_INVENTORY_FILES) {
-        const metadata = await stat(absolute).catch(() => null);
+        const metadata = await stat(/* turbopackIgnore: true */ absolute).catch(() => null);
         if (metadata) files.push({ path: relativePath, size: metadata.size });
       }
     }
@@ -165,13 +165,13 @@ async function buildResolver(
 ): Promise<ResolverBundle> {
   const textCache = new Map<string, string>();
   const assetCache = new Map<string, string>();
-  const root = path.resolve(sourcePath);
+  const root = path.resolve(/*turbopackIgnore: true*/ sourcePath);
 
   const loadText = async (relativePath: string): Promise<string | null> => {
     if (textCache.has(relativePath)) return textCache.get(relativePath)!;
-    const absolute = path.resolve(root, relativePath);
+    const absolute = path.resolve(/*turbopackIgnore: true*/ root, relativePath);
     if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) return null;
-    const contents = await readFile(absolute, "utf8").catch(() => null);
+    const contents = await readFile(/* turbopackIgnore: true */ absolute, "utf8").catch(() => null);
     if (contents !== null) textCache.set(relativePath, contents);
     return contents;
   };
@@ -181,8 +181,8 @@ async function buildResolver(
     (file) => IMAGE_EXTENSIONS.has(path.posix.extname(file.path).toLowerCase()) && file.size <= MAX_ASSET_DATA_URI_BYTES,
   );
   for (const file of imageFiles.slice(0, 80)) {
-    const absolute = path.resolve(root, file.path);
-    const bytes = await readFile(absolute).catch(() => null);
+    const absolute = path.resolve(/*turbopackIgnore: true*/ root, file.path);
+    const bytes = await readFile(/* turbopackIgnore: true */ absolute).catch(() => null);
     if (!bytes) continue;
     const mime = IMAGE_MIME[path.posix.extname(file.path).toLowerCase()] ?? "application/octet-stream";
     assetCache.set(file.path, `data:${mime};base64,${bytes.toString("base64")}`);
@@ -260,9 +260,11 @@ async function readChromeManifest(
   sourcePath: string,
 ): Promise<{ manifest: ChromeManifest; manifestPath: string; baseDir: string } | null> {
   for (const candidate of ["manifest.json", "public/manifest.json", "src/manifest.json", "extension/manifest.json"]) {
-    const absolute = path.join(sourcePath, candidate);
+    const absolute = path.join(/*turbopackIgnore: true*/ sourcePath, candidate);
     try {
-      const manifest = JSON.parse(await readFile(absolute, "utf8")) as ChromeManifest;
+      const manifest = JSON.parse(
+        await readFile(/* turbopackIgnore: true */ absolute, "utf8"),
+      ) as ChromeManifest;
       if (typeof manifest.manifest_version === "number") {
         return { manifest, manifestPath: candidate, baseDir: path.posix.dirname(candidate) };
       }
@@ -319,7 +321,7 @@ function referencedStyles(html: string, htmlDir: string): string[] {
 
 function styleImportsOf(file: ParsedSourceFile): string[] {
   return file.imports
-    .filter((imported) => /\.(css|scss|sass|less)$/i.test(imported.specifier))
+    .filter((imported) => imported.specifier.startsWith(".") && /\.(css|scss|sass|less)$/i.test(imported.specifier))
     .map((imported) =>
       path.posix.normalize(
         path.posix.join(path.posix.dirname(file.relativePath), imported.specifier),

@@ -24,9 +24,7 @@ describe("extended project type detection", () => {
       {},
     );
     expect(project.projectType).toBe("chrome-extension");
-    expect(project.previewAvailable).toBe(false);
-    expect(project.previewReason).toMatch(/live preview unsupported/i);
-    expect(project.previewReason).toMatch(/extension/i);
+    expect(project.frameworks).toContain("chrome-extension");
   });
 
   it("detects a Python project with no package.json", async () => {
@@ -39,8 +37,6 @@ describe("extended project type detection", () => {
     );
     expect(project.projectType).toBe("python");
     expect(project.packageManagers).toContain("pip");
-    expect(project.previewAvailable).toBe(false);
-    expect(project.previewReason).toMatch(/python/i);
   });
 
   it("detects a Node CLI tool via the bin field", async () => {
@@ -54,7 +50,6 @@ describe("extended project type detection", () => {
       {},
     );
     expect(project.projectType).toBe("cli");
-    expect(project.previewAvailable).toBe(false);
   });
 
   it("detects a library via published entry points without app scripts", async () => {
@@ -68,10 +63,9 @@ describe("extended project type detection", () => {
       {},
     );
     expect(project.projectType).toBe("library");
-    expect(project.previewAvailable).toBe(false);
   });
 
-  it("keeps Vite apps fully previewable", async () => {
+  it("detects runnable Vite applications", async () => {
     const root = await scratch();
     await mkdir(path.join(root, "src"), { recursive: true });
     await writeFile(
@@ -83,7 +77,6 @@ describe("extended project type detection", () => {
       {},
     );
     expect(project.projectType).toBe("frontend");
-    expect(project.previewAvailable).toBe(true);
-    expect(project.previewCandidates[0]).toMatchObject({ root: ".", framework: "vite", available: true });
+    expect(project.subprojects[0]).toMatchObject({ root: ".", framework: "vite", runnable: true });
   });
 });

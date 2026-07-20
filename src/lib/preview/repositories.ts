@@ -1,5 +1,4 @@
 import path from "node:path";
-import type { SupportedFramework } from "../../types/api";
 import {
   BUNDLED_FIXTURE_REPO_URL,
   DIGITALOCEAN_SAMPLE_REPO_URL,
@@ -14,7 +13,6 @@ export {
 export type AllowedRepository = {
   repoUrl: string;
   sourcePath: string;
-  framework: SupportedFramework;
   source: "bundled" | "configured";
 };
 
@@ -88,9 +86,8 @@ export function normalizeGitHubRepositoryUrl(input: string): string {
 
 /**
  * Bundled demo repositories that resolve from local fixtures instead of the
- * GitHub API. This is NOT an allowlist anymore: any public React, Next.js,
- * or Vite repository can be analyzed and previewed. These fixtures just make
- * the demo work instantly (and offline) for two known-good repositories.
+ * GitHub API. This is NOT an allowlist: any supported public repository can
+ * be audited. These fixtures keep the demo instant and available offline.
  */
 export function getAllowedRepositories(
   projectRoot = process.cwd(),
@@ -98,19 +95,17 @@ export function getAllowedRepositories(
   return [
     {
       repoUrl: BUNDLED_FIXTURE_REPO_URL,
-      sourcePath: path.join(projectRoot, "fixtures", "sample-repo"),
-      framework: "vite",
+      sourcePath: path.join(/*turbopackIgnore: true*/ projectRoot, "fixtures", "sample-repo"),
       source: "bundled",
     },
     {
       repoUrl: DIGITALOCEAN_SAMPLE_REPO_URL,
       sourcePath: path.join(
-        projectRoot,
+        /*turbopackIgnore: true*/ projectRoot,
         "fixtures",
         "verified",
         "digitalocean-sample-vite-react",
       ),
-      framework: "vite",
       source: "configured",
     },
   ];

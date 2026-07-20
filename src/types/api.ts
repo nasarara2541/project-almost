@@ -1,22 +1,3 @@
-export type PreviewSessionStatus =
-  | "queued"
-  | "analyzing"
-  | "starting"
-  | "ready"
-  | "failed"
-  | "expired";
-
-export type SupportedFramework = "react" | "next" | "vite";
-
-export type PreviewSession = {
-  id: string;
-  repoUrl: string;
-  status: PreviewSessionStatus;
-  previewUrl?: string;
-  framework?: SupportedFramework;
-  error?: string;
-};
-
 export type CodeLocation = {
   file: string;
   lineStart?: number;
@@ -60,38 +41,6 @@ export type TraceResult = {
   provider?: TraceProvider;
 };
 
-export type CreatePreviewRequest = {
-  repoUrl: string;
-};
-
-/** A single repository file shipped to the browser for in-browser execution. */
-export type PreviewFile = {
-  path: string;
-  contents: string;
-  encoding: "utf8" | "base64";
-};
-
-/**
- * Everything the browser needs to run a repository inside a WebContainer.
- * The server only fetches and packages source files; it never executes them.
- */
-export type PreviewBundle = {
-  repoUrl: string;
-  projectRoot: string;
-  framework: SupportedFramework;
-  devCommand: { script: string; args: string[] };
-  files: PreviewFile[];
-};
-
-/** Client-side lifecycle of the in-browser preview. */
-export type BrowserPreviewStatus =
-  | "fetching-files"
-  | "booting"
-  | "installing"
-  | "starting"
-  | "ready"
-  | "failed";
-
 export type AnalyzeRequest = {
   repoUrl: string;
 };
@@ -122,11 +71,6 @@ export type DetectedSubproject = {
   runnable: boolean;
 };
 
-export type PreviewCandidate = DetectedSubproject & {
-  available: boolean;
-  reason: string;
-};
-
 export type RepositoryProjectInfo = {
   projectType:
     | "frontend"
@@ -142,9 +86,6 @@ export type RepositoryProjectInfo = {
   packageManagers: PackageManager[];
   monorepo: boolean;
   subprojects: DetectedSubproject[];
-  previewCandidates: PreviewCandidate[];
-  previewAvailable: boolean;
-  previewReason: string;
   defaultBranch?: string;
   description?: string;
   source: "verified-local" | "github-readonly";
@@ -233,6 +174,94 @@ export type AnalyzedSourceFile = {
   entryPoint: boolean;
 };
 
+export type AuditCategory =
+  | "community"
+  | "developer-experience"
+  | "testing"
+  | "maintainability"
+  | "frontend-quality";
+
+export type AuditSeverity = "high" | "medium" | "low" | "info";
+export type AuditConfidence = "high" | "medium" | "low";
+export type ContributionDifficulty = "quick-win" | "moderate" | "substantial";
+
+export type AuditEvidence = {
+  label: string;
+  value: string;
+  status: "present" | "missing" | "signal";
+  location?: CodeLocation;
+};
+
+export type AuditFinding = {
+  id: string;
+  category: AuditCategory;
+  severity: AuditSeverity;
+  confidence: AuditConfidence;
+  title: string;
+  summary: string;
+  whyItMatters: string;
+  recommendation: string;
+  evidence: AuditEvidence[];
+  files: string[];
+  difficulty: ContributionDifficulty;
+  contributionTask: string;
+  limitation?: string;
+};
+
+export type AuditStrength = {
+  id: string;
+  category: AuditCategory;
+  title: string;
+  evidence: string;
+};
+
+export type AuditCategoryScore = {
+  category: AuditCategory;
+  score: number;
+  findingCount: number;
+};
+
+export type SkippedRepositoryFile = {
+  path: string;
+  size: number;
+  reason: "oversized" | "fetch-failed" | "unsupported";
+};
+
+export type AnalysisCoverage = {
+  repositoryFiles: number;
+  supportedFiles: number;
+  fetchedFiles: number;
+  analyzedSourceFiles: number;
+  skippedFiles: SkippedRepositoryFile[];
+  coveragePercent: number;
+  complete: boolean;
+  limitations: string[];
+};
+
+export type ContributionOpportunity = {
+  id: string;
+  findingId: string;
+  title: string;
+  impact: AuditSeverity;
+  difficulty: ContributionDifficulty;
+  summary: string;
+  task: string;
+  files: string[];
+};
+
+export type RepositoryAudit = {
+  score: number;
+  status: "strong" | "solid" | "needs-attention" | "significant-gaps";
+  headline: string;
+  summary: string;
+  categoryScores: AuditCategoryScore[];
+  findings: AuditFinding[];
+  strengths: AuditStrength[];
+  opportunities: ContributionOpportunity[];
+  coverage: AnalysisCoverage;
+  generatedAt: string;
+};
+
 export type AnalyzeResult = {
   analysisId: string;
   sessionId: string;
@@ -250,6 +279,7 @@ export type AnalyzeResult = {
   folders: string[];
   importantFiles: string[];
   interface: InterfaceReport;
+  audit: RepositoryAudit;
 };
 
 export type TraceRequest = {

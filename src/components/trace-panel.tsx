@@ -49,7 +49,6 @@ export function TracePanel({
     <aside className="trace-panel" aria-label="Ask about this feature">
       <div className="trace-panel__heading">
         <div className="panel-heading-with-step">
-          <span className="step-number">04</span>
           <div>
             <p className="section-label">Grounded trace</p>
             <h3>Ask how a feature works</h3>

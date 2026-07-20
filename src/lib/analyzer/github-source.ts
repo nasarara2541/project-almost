@@ -2,12 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { normalizeGitHubRepositoryUrl } from "../preview/repositories";
+import type { SkippedRepositoryFile } from "../../types/api";
 import type { AnalysisRepository } from "./repository-analyzer";
 
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]);
-// Additional text files required to actually run the project in the
-// in-browser WebContainer (HTML entry points, styles, JSON config, etc.)
-// and to detect non-JavaScript project types.
+// Additional text files used for repository auditing, interface reconstruction,
+// and detection of non-JavaScript project types.
 const RUNTIME_TEXT_EXTENSIONS = new Set([
   ".html",
   ".htm",
@@ -44,7 +44,7 @@ const RUNTIME_TEXT_EXTENSIONS = new Set([
   ".sh",
   ".ipynb",
 ]);
-// Small binary assets (logos, icons, fonts) previews commonly need.
+// Small binary assets (logos, icons, fonts) that static previews commonly need.
 const RUNTIME_BINARY_EXTENSIONS = new Set([
   ".png",
   ".jpg",
@@ -84,6 +84,17 @@ const MANIFEST_FILES = new Set([
   "build.gradle",
   "Dockerfile",
   "Makefile",
+  // Community-health files commonly have no extension or live at the root.
+  "LICENSE",
+  "LICENCE",
+  "COPYING",
+  "LICENSE.md",
+  "LICENSE.txt",
+  "LICENCE.md",
+  "CONTRIBUTING.md",
+  "CODE_OF_CONDUCT.md",
+  "SECURITY.md",
+  "CHANGELOG.md",
 ]);
 const MAX_FILES = 2_000;
 const MAX_FILE_BYTES = 512 * 1024;
@@ -194,7 +205,10 @@ function safeRelevantPath(entry: GitHubTreeEntry): entry is GitHubTreeEntry & { 
   const basename = path.posix.basename(normalized);
   const extension = path.posix.extname(basename).toLowerCase();
   if (basename.startsWith(".env") && basename !== ".env.example") return false;
-  if (RUNTIME_BINARY_EXTENSIONS.has(extension)) return entry.size <= MAX_BINARY_FILE_BYTES;
+  if (RUNTIME_BINARY_EXTENSIONS.has(extension)) return true;
+  if (/^(?:readme|licen[cs]e|copying|contributing|code[_-]of[_-]conduct|security|changelog)(?:\.|$)/i.test(basename)) {
+    return true;
+  }
   return (
     MANIFEST_FILES.has(basename) ||
     SOURCE_EXTENSIONS.has(extension) ||
@@ -241,7 +255,12 @@ export async function fetchPublicGitHubRepository(
     );
   }
 
-  const files = (tree.tree ?? []).filter(safeRelevantPath);
+  const repositoryFiles = (tree.tree ?? []).filter((entry) => entry.type === "blob").length;
+  const supportedFiles = (tree.tree ?? []).filter(safeRelevantPath);
+  const skippedFiles: SkippedRepositoryFile[] = supportedFiles
+    .filter((file) => file.size > MAX_FILE_BYTES)
+    .map((file) => ({ path: file.path, size: file.size, reason: "oversized" as const }));
+  const files = supportedFiles.filter((file) => file.size <= MAX_FILE_BYTES);
   if (files.length > MAX_FILES) {
     throw new RemoteRepositoryError(
       `Repository has ${files.length} supported files; the read-only analysis limit is ${MAX_FILES}.`,
@@ -249,16 +268,19 @@ export async function fetchPublicGitHubRepository(
     );
   }
   const totalBytes = files.reduce((total, file) => total + file.size, 0);
-  if (files.some((file) => file.size > MAX_FILE_BYTES) || totalBytes > MAX_TOTAL_BYTES) {
+  if (totalBytes > MAX_TOTAL_BYTES) {
     throw new RemoteRepositoryError(
-      "Supported source exceeds the 512 KB per-file or 20 MB total fetch limit.",
+      "Supported source exceeds the 20 MB total fetch limit.",
       "TOO_LARGE",
     );
   }
 
-  const workspace = await mkdtemp(path.join(tmpdir(), "repolens-analysis-"));
+  const workspace = await mkdtemp(
+    /* turbopackIgnore: true */ path.join(tmpdir(), "repolens-analysis-"),
+  );
   try {
     let cursor = 0;
+    let fetchedFiles = 0;
     const workers = Array.from({ length: Math.min(8, files.length) }, async () => {
       while (cursor < files.length) {
         const file = files[cursor++];
@@ -270,38 +292,67 @@ export async function fetchPublicGitHubRepository(
         if (isBinaryPath(file.path)) {
           // Binary assets (logos, fonts) are best-effort: a missing image
           // should not fail the whole analysis or preview.
-          if (!response.ok) continue;
+          if (!response.ok) {
+            skippedFiles.push({ path: file.path, size: file.size, reason: "fetch-failed" });
+            continue;
+          }
           const bytes = Buffer.from(await response.arrayBuffer());
-          if (bytes.byteLength > MAX_BINARY_FILE_BYTES) continue;
-          const destination = path.join(workspace, ...file.path.split("/"));
-          await mkdir(path.dirname(destination), { recursive: true });
-          await writeFile(destination, bytes);
+          if (bytes.byteLength > MAX_BINARY_FILE_BYTES) {
+            skippedFiles.push({ path: file.path, size: bytes.byteLength, reason: "oversized" });
+            continue;
+          }
+          const destination = path.join(/* turbopackIgnore: true */ workspace, ...file.path.split("/"));
+          await mkdir(/* turbopackIgnore: true */ path.dirname(destination), { recursive: true });
+          await writeFile(/* turbopackIgnore: true */ destination, bytes);
+          fetchedFiles += 1;
         } else {
           if (!response.ok) {
-            throw new RemoteRepositoryError(
-              `Source file ${file.path} could not be fetched from GitHub.`,
-              "FETCH_FAILED",
-            );
+            skippedFiles.push({ path: file.path, size: file.size, reason: "fetch-failed" });
+            continue;
           }
-          const destination = path.join(workspace, ...file.path.split("/"));
-          await mkdir(path.dirname(destination), { recursive: true });
+          const destination = path.join(/* turbopackIgnore: true */ workspace, ...file.path.split("/"));
+          await mkdir(/* turbopackIgnore: true */ path.dirname(destination), { recursive: true });
           const source = await response.text();
           if (Buffer.byteLength(source) > MAX_FILE_BYTES) {
-            throw new RemoteRepositoryError(`Source file ${file.path} exceeds the analysis limit.`, "TOO_LARGE");
+            // GitHub tree metadata can race with raw-content responses when a
+            // branch moves. Keep the per-file limit without failing the rest
+            // of the repository if the fetched content is unexpectedly large.
+            skippedFiles.push({
+              path: file.path,
+              size: Buffer.byteLength(source),
+              reason: "oversized",
+            });
+            continue;
           }
-          await writeFile(destination, source, "utf8");
+          await writeFile(/* turbopackIgnore: true */ destination, source, "utf8");
+          fetchedFiles += 1;
         }
       }
     });
     await Promise.all(workers);
+    if (fetchedFiles === 0 && files.length > 0) {
+      throw new RemoteRepositoryError(
+        "GitHub source files could not be fetched for analysis.",
+        "FETCH_FAILED",
+      );
+    }
     return {
-      repository: { repoUrl: normalized, sourcePath: workspace },
+      repository: {
+        repoUrl: normalized,
+        sourcePath: workspace,
+        acquisition: {
+          repositoryFiles,
+          supportedFiles: supportedFiles.length,
+          fetchedFiles,
+          skippedFiles: skippedFiles.sort((a, b) => a.path.localeCompare(b.path)),
+        },
+      },
       defaultBranch: metadata.default_branch,
       description: metadata.description ?? undefined,
-      cleanup: () => rm(workspace, { recursive: true, force: true }),
+      cleanup: () => rm(/* turbopackIgnore: true */ workspace, { recursive: true, force: true }),
     };
   } catch (error) {
-    await rm(workspace, { recursive: true, force: true });
+    await rm(/* turbopackIgnore: true */ workspace, { recursive: true, force: true });
     if (error instanceof RemoteRepositoryError) throw error;
     throw new RemoteRepositoryError(
       error instanceof Error ? error.message : "Repository source could not be fetched.",

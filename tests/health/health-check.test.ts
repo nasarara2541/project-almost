@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AnalysisSessionManager } from "../../src/lib/analyzer/analysis-session-manager";
-import { packageRepositoryFiles, selectDevCommand } from "../../src/lib/preview/file-packager";
+import { createAuditMarkdown } from "../../src/lib/audit/markdown-report";
 import { getAllowedRepositories } from "../../src/lib/preview/repositories";
 import { traceRepositoryFeature } from "../../src/lib/trace/trace-repository";
 import type { AnalyzeResult } from "../../src/types/api";
@@ -18,29 +18,16 @@ describe.sequential("RepoLens final health check", () => {
     await analyses.dispose();
   });
 
-  it("Preview bundling works: packages the fixture for the in-browser runtime", async () => {
-    const resolved = analyses.resolvePreviewRepository(analysis.analysisId, ".");
-    expect(resolved).not.toBeNull();
-    expect(resolved!.framework).toBe("vite");
-
-    const files = await packageRepositoryFiles(resolved!.sourcePath);
-    const paths = files.map((file) => file.path);
-    expect(paths).toContain("package.json");
-    expect(paths).toContain("index.html");
-    expect(paths.some((path) => path.startsWith("node_modules/"))).toBe(false);
-    expect(paths.some((path) => path.startsWith(".env"))).toBe(false);
-
-    const manifest = JSON.parse(
-      files.find((file) => file.path === "package.json")!.contents,
-    ) as { scripts?: Record<string, string> };
-    const devCommand = selectDevCommand(Object.keys(manifest.scripts ?? {}));
-    expect(devCommand).not.toBeNull();
-    expect(devCommand!.args[0]).toBe("run");
+  it("Audit works: produces evidence, opportunities, coverage, and an export", () => {
+    expect(analysis.audit.findings.length).toBeGreaterThan(0);
+    expect(analysis.audit.opportunities.length).toBeGreaterThan(0);
+    expect(analysis.audit.coverage.coveragePercent).toBe(100);
+    expect(createAuditMarkdown(analysis)).toContain("# RepoLens audit:");
   });
 
   it("Analysis works: builds routes, components, services, files, and edges", async () => {
     expect(analysis.routes).toEqual(expect.arrayContaining(["/", "/settings"]));
-    expect(analysis.project).toMatchObject({ projectType: "frontend", previewAvailable: true });
+    expect(analysis.project).toMatchObject({ projectType: "frontend" });
     expect(analysis.graph.nodes.some((node) => node.type === "component")).toBe(true);
     expect(analysis.graph.nodes.some((node) => node.type === "api")).toBe(true);
     expect(analysis.graph.edges.length).toBeGreaterThan(0);

@@ -1,5 +1,6 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import ts from "typescript";
 import type {
   AnalyzeResult,
   AnalyzedSourceFile,
@@ -8,9 +9,11 @@ import type {
   CodeLocation,
   PreviewElement,
   RepositoryProjectInfo,
+  SkippedRepositoryFile,
 } from "../../types/api";
 import { detectInterface, inventoryWorkspace } from "./interface-detector";
 import { parseSourceFile, type ParsedSourceFile, type ParsedSymbol } from "./parser";
+import { auditRepository } from "./repository-audit";
 
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]);
 const IGNORED_DIRECTORIES = new Set(["node_modules", ".git", "dist", "_static", ".next"]);
@@ -21,6 +24,12 @@ const MAX_SINGLE_FILE_BYTES = 512 * 1024;
 export type AnalysisRepository = {
   repoUrl: string;
   sourcePath: string;
+  acquisition?: {
+    repositoryFiles: number;
+    supportedFiles: number;
+    fetchedFiles: number;
+    skippedFiles: SkippedRepositoryFile[];
+  };
 };
 
 export class SourceAnalysisError extends Error {
@@ -38,12 +47,57 @@ type DetectedRoute = {
 
 type GraphEdge = { source: string; target: string };
 
+type ImportAliasRule = {
+  prefix: string;
+  suffix: string;
+  targets: { prefix: string; suffix: string; baseDirectory: string }[];
+};
+
 function normalizeRelative(filePath: string): string {
   return filePath.split(path.sep).join("/");
 }
 
+async function loadImportAliasRules(
+  repositoryRoot: string,
+  configPaths: string[],
+): Promise<ImportAliasRule[]> {
+  const rules: ImportAliasRule[] = [];
+  for (const relativePath of configPaths) {
+    const absolutePath = path.resolve(/* turbopackIgnore: true */ repositoryRoot, relativePath);
+    const source = await readFile(/* turbopackIgnore: true */ absolutePath, "utf8").catch(() => null);
+    if (!source) continue;
+    const parsed = ts.parseConfigFileTextToJson(absolutePath, source);
+    const compilerOptions = parsed.config?.compilerOptions as {
+      baseUrl?: unknown;
+      paths?: Record<string, unknown>;
+    } | undefined;
+    const baseDirectory = path.resolve(
+      path.dirname(absolutePath),
+      typeof compilerOptions?.baseUrl === "string" ? compilerOptions.baseUrl : ".",
+    );
+    for (const [pattern, rawTargets] of Object.entries(compilerOptions?.paths ?? {})) {
+      if (!Array.isArray(rawTargets)) continue;
+      const wildcard = pattern.indexOf("*");
+      const prefix = wildcard >= 0 ? pattern.slice(0, wildcard) : pattern;
+      const suffix = wildcard >= 0 ? pattern.slice(wildcard + 1) : "";
+      const targets = rawTargets
+        .filter((target): target is string => typeof target === "string")
+        .map((target) => {
+          const targetWildcard = target.indexOf("*");
+          return {
+            prefix: targetWildcard >= 0 ? target.slice(0, targetWildcard) : target,
+            suffix: targetWildcard >= 0 ? target.slice(targetWildcard + 1) : "",
+            baseDirectory,
+          };
+        });
+      if (targets.length > 0) rules.push({ prefix, suffix, targets });
+    }
+  }
+  return rules;
+}
+
 async function scanSourceFiles(root: string): Promise<string[]> {
-  const rootMetadata = await stat(root).catch(() => null);
+  const rootMetadata = await stat(/* turbopackIgnore: true */ root).catch(() => null);
   if (!rootMetadata?.isDirectory()) {
     throw new SourceAnalysisError("The verified repository source directory is missing.");
   }
@@ -54,14 +108,14 @@ async function scanSourceFiles(root: string): Promise<string[]> {
   async function visit(directory: string): Promise<void> {
     let entries;
     try {
-      entries = await readdir(directory, { withFileTypes: true });
+      entries = await readdir(/* turbopackIgnore: true */ directory, { withFileTypes: true });
     } catch {
       throw new SourceAnalysisError("A verified repository source directory could not be read.");
     }
 
     for (const entry of entries) {
       if (IGNORED_DIRECTORIES.has(entry.name)) continue;
-      const entryPath = path.join(directory, entry.name);
+      const entryPath = path.join(/* turbopackIgnore: true */ directory, entry.name);
       if (entry.isSymbolicLink()) {
         throw new SourceAnalysisError("Verified analysis sources may not contain symbolic links.");
       }
@@ -73,7 +127,7 @@ async function scanSourceFiles(root: string): Promise<string[]> {
         continue;
       }
 
-      const metadata = await stat(entryPath);
+      const metadata = await stat(/* turbopackIgnore: true */ entryPath);
       if (metadata.size > MAX_SINGLE_FILE_BYTES) {
         throw new SourceAnalysisError(`Source file ${entry.name} exceeds the 512 KB limit.`);
       }
@@ -89,20 +143,57 @@ async function scanSourceFiles(root: string): Promise<string[]> {
   return files.sort();
 }
 
-function resolveRelativeImport(
+function resolveLocalImport(
   importer: ParsedSourceFile,
   specifier: string,
   knownFiles: Map<string, ParsedSourceFile>,
+  repositoryRoot: string,
+  aliasRules: ImportAliasRule[],
 ): ParsedSourceFile | null {
-  const base = path.resolve(path.dirname(importer.absolutePath), specifier);
-  const candidates = [
-    base,
-    ...[...SOURCE_EXTENSIONS].map((extension) => `${base}${extension}`),
-    ...[...SOURCE_EXTENSIONS].map((extension) => path.join(base, `index${extension}`)),
-  ];
-  for (const candidate of candidates) {
-    const match = knownFiles.get(path.normalize(candidate));
-    if (match) return match;
+  const bases: string[] = [];
+  if (specifier.startsWith(".")) {
+    bases.push(path.resolve(path.dirname(importer.absolutePath), specifier));
+  } else if (specifier.startsWith("@/") || specifier.startsWith("~/")) {
+    const suffix = specifier.slice(2);
+    bases.push(path.resolve(repositoryRoot, "src", suffix), path.resolve(repositoryRoot, suffix));
+  } else if (specifier.startsWith("$lib/")) {
+    bases.push(path.resolve(repositoryRoot, "src", "lib", specifier.slice(5)));
+  }
+
+  for (const rule of aliasRules) {
+    if (!specifier.startsWith(rule.prefix) || !specifier.endsWith(rule.suffix)) continue;
+    const wildcard = specifier.slice(
+      rule.prefix.length,
+      rule.suffix ? -rule.suffix.length : undefined,
+    );
+    for (const target of rule.targets) {
+      bases.push(path.resolve(target.baseDirectory, `${target.prefix}${wildcard}${target.suffix}`));
+    }
+  }
+  if (bases.length === 0) return null;
+
+  for (const base of bases) {
+    const candidates = [
+      base,
+      ...[...SOURCE_EXTENSIONS].map((extension) => `${base}${extension}`),
+      ...[...SOURCE_EXTENSIONS].map((extension) => path.join(base, `index${extension}`)),
+    ];
+    for (const candidate of candidates) {
+      const match = knownFiles.get(path.normalize(candidate));
+      if (match) return match;
+    }
+  }
+
+  // In monorepos, aliases are frequently rooted at a package rather than the
+  // repository root. A unique suffix match is safe; ambiguous matches are not.
+  if (/^(?:@\/|~\/|\$lib\/)/.test(specifier)) {
+    const suffix = specifier.replace(/^(?:@\/|~\/|\$lib\/)/, "").replaceAll("\\", "/");
+    const matches = [...knownFiles.values()].filter((file) => {
+      const withoutExtension = file.relativePath.replace(/\.[^.\/]+$/, "");
+      return withoutExtension === suffix || withoutExtension.endsWith(`/${suffix}`) ||
+        withoutExtension.endsWith(`/${suffix}/index`);
+    });
+    if (matches.length === 1) return matches[0];
   }
   return null;
 }
@@ -306,9 +397,6 @@ const FALLBACK_PROJECT: RepositoryProjectInfo = {
   packageManagers: [],
   monorepo: false,
   subprojects: [],
-  previewCandidates: [],
-  previewAvailable: false,
-  previewReason: "No runnable frontend preview candidate was detected.",
   source: "verified-local",
 };
 
@@ -318,12 +406,19 @@ export async function analyzeRepository(
   project: RepositoryProjectInfo = FALLBACK_PROJECT,
 ): Promise<AnalyzeResult> {
   const sourcePaths = await scanSourceFiles(repository.sourcePath);
+  const inventory = await inventoryWorkspace(repository.sourcePath);
+  const aliasRules = await loadImportAliasRules(
+    repository.sourcePath,
+    inventory.files
+      .map((file) => file.path)
+      .filter((file) => /(^|\/)(?:tsconfig|jsconfig)\.json$/i.test(file) && file.split("/").length <= 4),
+  );
   const parsedFiles = await Promise.all(
     sourcePaths.map(async (absolutePath) => {
       const relativePath = normalizeRelative(path.relative(repository.sourcePath, absolutePath));
       let source: string;
       try {
-        source = await readFile(absolutePath, "utf8");
+        source = await readFile(/* turbopackIgnore: true */ absolutePath, "utf8");
       } catch {
         throw new SourceAnalysisError(`Source file ${relativePath} could not be read.`);
       }
@@ -338,9 +433,18 @@ export async function analyzeRepository(
   for (const file of parsedFiles) {
     importTargets.set(
       file.relativePath,
-      file.imports
-        .map((imported) => resolveRelativeImport(file, imported.specifier, filesByAbsolutePath))
-        .filter((target): target is ParsedSourceFile => Boolean(target)),
+      [...new Map(
+        file.imports
+          .map((imported) => resolveLocalImport(
+            file,
+            imported.specifier,
+            filesByAbsolutePath,
+            repository.sourcePath,
+            aliasRules,
+          ))
+          .filter((target): target is ParsedSourceFile => Boolean(target))
+          .map((target) => [target.relativePath, target]),
+      ).values()],
     );
   }
 
@@ -351,7 +455,6 @@ export async function analyzeRepository(
 
   const routes = detectRoutes(parsedFiles, importTargets);
   const graph = buildGraph(parsedFiles, routes, importTargets);
-  const inventory = await inventoryWorkspace(repository.sourcePath);
   const elements: PreviewElement[] = routes.map((route) => ({
     id: `preview:${route.route}:${route.file}`,
     label: route.component?.name ?? route.route,
@@ -383,6 +486,14 @@ export async function analyzeRepository(
     project,
     inventory,
   });
+  const audit = await auditRepository({
+    repository,
+    inventory,
+    files,
+    graph,
+    project,
+    interfaceReport,
+  });
 
   return {
     analysisId: sessionId,
@@ -399,5 +510,6 @@ export async function analyzeRepository(
     folders: inventory.folders,
     importantFiles: inventory.importantFiles,
     interface: interfaceReport,
+    audit,
   };
 }

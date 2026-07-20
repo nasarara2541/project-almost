@@ -1,88 +1,83 @@
 # RepoLens
 
-RepoLens is a **GitHub-to-interface visualizer**. Paste any public GitHub
-repository URL and RepoLens answers: *what does this project look like, what
-interface does it contain, and how is that interface connected to the code?*
+RepoLens is an evidence-backed **repository audit and contribution finder**.
+Paste a public GitHub repository and get a prioritized explanation of what is
+healthy, what deserves attention, and what useful contribution someone could
+make next.
 
-It does not need to run the repository. The interface preview is
-reconstructed **statically and safely from source** — no repository code is
-ever executed by default.
+RepoLens reads supported source and repository files without executing the
+project. Its core audit is deterministic and does not require an AI key.
 
-```
-GitHub URL
-  → fetch & analyze repository (read-only)
-  → detect project type and visual interface
-  → extract screens, pages, popups, routes, components, styles, assets
-  → render a safe visual preview gallery
-  → connect every screen/component to its source files
-  → show the architecture graph
-  → answer questions grounded in the real code
-```
+## What RepoLens reports
 
-## What you get for different repositories
+- A transparent repository-readiness score with per-category breakdowns.
+- Prioritized gaps across community health, developer experience, tests and
+  CI, maintainability, and frontend quality.
+- Evidence for every finding, including exact files and line numbers when
+  available.
+- Confidence, limitations, impact, and contribution difficulty.
+- Copyable contribution tasks derived from verified findings.
+- Named files with zero detected static inbound references, carefully labeled
+  as **possibly unreferenced** rather than confirmed dead code.
+- Analysis coverage, skipped files, unsupported files, and static-analysis
+  limitations.
+- A searchable source explorer, architecture map, grounded feature tracing,
+  and safe static interface reconstruction.
+- Downloadable Markdown audit reports.
 
-- **Frontend websites** (React, Next.js, Vite, Vue, Svelte, Astro, Angular,
-  Nuxt): homepage and route screens, components with inferred visual roles
-  (navigation, card, table, form, modal, …), CSS/Tailwind detection, images
-  and other assets.
-- **Chrome extensions**: the `popup.html` interface rendered as a sanitized
-  preview, detected popup buttons/inputs/links, extension icons, options
-  page, and content-script surfaces — each connected to its source files.
-- **Frontend monorepos**: every package is detected (e.g. a Vite app and a
-  Next.js app side by side) and the gallery has a project picker to choose
-  which interface to explore.
-- **CLI, backend, library, or data repositories**: analysis never fails.
-  You get the project type, technologies, language breakdown, folder
-  structure, entry points, and the architecture map, plus the message
-  *“No visual interface detected. This repository appears to be a CLI,
-  library, backend, or data project.”*
+## Audit categories
 
-## How the safe preview works
+### Community readiness
 
-- Real HTML pages (including extension popups) are **sanitized**: scripts,
-  iframes/objects/embeds, event handlers, `javascript:` URLs, and form
-  actions are stripped; local stylesheets are inlined (with remote
-  `@import`/`url()` references removed); local images become data URIs and
-  external images become neutral placeholders.
-- JSX components are converted into **wireframes** by walking the AST:
-  static structure, text, and class names are kept; dynamic expressions
-  become placeholders; child components render as labeled blocks; `map`
-  callbacks and conditionals render their primary branch.
-- Vue templates, Svelte markup, and Astro templates are sanitized the same
-  way (framework directives removed).
-- Every preview renders in `<iframe sandbox="" srcDoc>` — the empty
-  `sandbox` attribute disables script execution at the browser level, so
-  even a sanitizer escape cannot run code.
+README, license, contribution guide, code of conduct, security policy, issue
+templates, and pull-request templates.
 
-## Code connection, architecture, and tracing
+### Developer experience
 
-Click any gallery card to see its **code connection**: source file, symbol,
-line numbers, imports, dependents, referenced styles and assets, and the
-matching node highlighted in the architecture graph (routes → components →
-services → files, with fan-in/risk highlighting).
+Setup documentation, conventional package scripts, environment examples, and
+runtime-version declarations.
 
-Ask questions like “How does the settings page work?” or “Which files
-control dark mode?” in the trace panel. Answers cite only files and symbols
-that exist in the analyzed repository — citations are validated before they
-are shown and invalid ones are rejected.
+### Testing and automation
 
-### Trace providers
+Test files, a predictable test command, GitHub Actions, and whether workflows
+appear to run the available test suite.
 
-- **Deterministic local analyzer (default)** — no API key required. Results
-  are labeled *Local analysis* and never presented as model output.
-- **OpenAI (optional)** — set `OPENAI_API_KEY` to route trace questions
-  through an OpenAI model (`OPENAI_TRACE_MODEL`, default `gpt-5.6`;
-  `OPENAI_API_BASE_URL` supports any OpenAI-compatible endpoint). The same
-  citation validation applies to model output.
+### Maintainability
 
-## Optional live execution preview
+Large source files, oversized skipped files, TODO/FIXME/HACK markers, high
+static fan-in, and possibly unreferenced files.
 
-For runnable React/Next.js/Vite projects, an optional *live execution
-preview* can boot the actual app inside a sandboxed in-browser Node.js
-runtime (WebContainers) in the visitor's own tab. This is an enhancement,
-not the product's core — analysis and the interface gallery work for every
-repository without executing anything. `next.config.ts` sets the
-cross-origin-isolation headers WebContainers requires.
+### Frontend quality
+
+Literal image elements missing `alt` attributes, plus routes, screens,
+components, styles, and safe static interface previews.
+
+## Reliability model
+
+RepoLens distinguishes facts from signals:
+
+- File-presence checks and exact source matches are high-confidence evidence.
+- Heuristics carry explicit confidence and limitation notes.
+- Partial coverage lowers confidence where missing files could change a result.
+- Zero static fan-in is never described as proof of dead code. Entry points,
+  routes, tests, configuration, scripts, migrations, stories, and known
+  framework-convention files are excluded from that check.
+- Runtime behavior, dependency injection, external consumers, and dynamically
+  constructed imports may not be visible to static analysis.
+- Core findings do not depend on a language model.
+
+## Safe static interface reconstruction
+
+For frontend repositories, RepoLens reconstructs interface previews from HTML
+and component source without executing repository code:
+
+- HTML is sanitized to remove scripts, handlers, active embeds, unsafe URLs,
+  and form actions.
+- JSX is converted into a structural wireframe.
+- Vue, Svelte, and Astro templates are sanitized similarly.
+- Previews render inside script-disabled sandboxed iframes.
+
+These are source-grounded structural previews, not runtime screenshots.
 
 ## Setup
 
@@ -93,35 +88,44 @@ npm install
 npm run dev
 ```
 
-Environment variables (all optional, `.env.local` locally):
+Open the local URL printed by Next.js and paste any public GitHub repository.
 
-- `GITHUB_TOKEN` — raises GitHub REST API rate limits for repository fetching.
-- `OPENAI_API_KEY` — enables the optional OpenAI trace provider.
-- `OPENAI_TRACE_MODEL`, `OPENAI_API_BASE_URL` — override model/endpoint.
+Optional environment variables in `.env.local`:
 
-Run the test suite with `npm test` (75 tests), or the end-to-end health
-check with `npm run health`.
+- `GITHUB_TOKEN` — raises GitHub REST API rate limits.
+- `OPENAI_API_KEY` — optionally enriches feature tracing. It is not used for
+  the core audit.
+- `OPENAI_TRACE_MODEL` and `OPENAI_API_BASE_URL` — override the optional trace
+  model and endpoint.
+- `ANALYSIS_TTL_MS` — controls in-memory analysis retention, capped at 30
+  minutes.
 
-## Repository input
+## Verification
 
-Any public `github.com` repository URL works. `http://` and `https://`,
-`www.`, missing schemes, trailing slashes, `.git` suffixes, and deep links
-such as `/tree/<branch>` or `/blob/<path>` are all normalized to the
-repository root. Private, missing, oversized, or truncated repositories
-produce specific error messages.
+```bash
+npm test
+npm run health
+npm run build
+```
 
-Bundled demo fixtures (instant, offline):
+## Repository limits
 
-- `https://github.com/repolens-demo/northstar-console` — Vite dashboard demo.
-- `https://github.com/digitalocean/sample-vite-react` — pinned local snapshot.
-- `fixtures/chrome-extension-demo/` — Chrome extension fixture used by the
-  interface-detection tests.
+- Public `github.com` repositories only.
+- Up to 2,000 supported fetched files.
+- Up to 20 MB total supported content.
+- Individual files over 512 KB are skipped and disclosed in coverage instead
+  of failing the entire repository.
+- Environment files are never fetched except `.env.example`.
+- Unsupported and skipped content is reported so users can judge completeness.
 
-## Limits
+## Current scope
 
-Public repositories only. Fetching is bounded (2,000 supported files,
-512 KB per text file, 20 MB total; small binary assets best-effort).
-`.env*` files are never fetched (except `.env.example`). Wireframes show
-the primary branch of conditional UI and cannot execute runtime logic —
-they are structural previews, not pixel-perfect renders. Tailwind class
-styling is detected but not compiled into wireframes.
+JavaScript and TypeScript repositories receive the deepest source-relationship
+analysis. RepoLens still provides project classification, community checks,
+coverage, structure, and selected ecosystem signals for supported Python, Go,
+Rust, Ruby, PHP, Java, Kotlin, Swift, C/C++, C#, shell, Vue, Svelte, and Astro
+files.
+
+Analysis sessions currently live in process memory and temporary storage. A
+multi-instance public deployment should add shared caching or reproducible
+analysis by repository commit SHA before treating analysis IDs as shareable.

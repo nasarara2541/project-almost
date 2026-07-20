@@ -132,7 +132,6 @@ export function ArchitecturePanel({
     <aside className="architecture-panel" aria-label="Repository architecture">
       <div className="architecture-panel__heading">
         <div className="panel-heading-with-step">
-          <span className="step-number">03</span>
           <div>
             <p className="section-label">Architecture</p>
             <h3>{analysis ? `${analysis.graph.nodes.length} detected nodes` : "Analyzing source"}</h3>

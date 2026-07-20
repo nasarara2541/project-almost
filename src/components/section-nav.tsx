@@ -6,10 +6,11 @@ type Section = { id: string; label: string };
 
 const SECTIONS: Section[] = [
   { id: "top", label: "Overview" },
-  { id: "project-summary", label: "Summary" },
+  { id: "start-here", label: "Start here" },
+  { id: "gaps", label: "Gaps" },
+  { id: "opportunities", label: "Contribute" },
+  { id: "repository-explorer", label: "Explorer" },
   { id: "interface", label: "Interface" },
-  { id: "code-insight", label: "Architecture" },
-  { id: "live-preview", label: "Live preview" },
 ];
 
 /**

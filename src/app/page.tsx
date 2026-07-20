@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AuditFindings } from "@/components/audit-findings";
+import { AuditOverview } from "@/components/audit-overview";
 import { ArchitecturePanel } from "@/components/architecture-panel";
+import { ContributionOpportunities } from "@/components/contribution-opportunities";
 import { InterfaceGallery } from "@/components/interface-gallery";
-import { LivePreviewPanel } from "@/components/live-preview-panel";
 import { ProjectSummary } from "@/components/project-summary";
+import { RepositoryExplorer } from "@/components/repository-explorer";
 import { RepositoryForm } from "@/components/repository-form";
 import { SectionNav } from "@/components/section-nav";
 import { TracePanel } from "@/components/trace-panel";
@@ -13,8 +16,6 @@ import { findTraceNodeId } from "@/lib/trace/highlighting";
 import type {
   AnalyzeResult,
   CodeLocation,
-  PreviewBundle,
-  PreviewSession,
   TraceErrorCode,
   TraceResult,
 } from "@/types/api";
@@ -26,19 +27,10 @@ export default function Home() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [session, setSession] = useState<PreviewSession | null>(null);
-  const [isStartingPreview, setIsStartingPreview] = useState(false);
-  const [previewLogs, setPreviewLogs] = useState<string[]>([]);
   const [trace, setTrace] = useState<TraceResult | null>(null);
   const [isTracing, setIsTracing] = useState(false);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [traceErrorCode, setTraceErrorCode] = useState<TraceErrorCode | null>(null);
-
-  useEffect(() => {
-    if (session && ["ready", "failed"].includes(session.status)) {
-      setIsStartingPreview(false);
-    }
-  }, [session?.status]);
 
   useEffect(() => {
     const analysisId = analysis?.analysisId;
@@ -56,8 +48,6 @@ export default function Home() {
     setAnalysisError(null);
     setSelectedGalleryId(null);
     setSelectedNodeId(null);
-    setSession(null);
-    setPreviewLogs([]);
     setTrace(null);
     setTraceError(null);
     setTraceErrorCode(null);
@@ -108,70 +98,6 @@ export default function Home() {
     if (item) setSelectedNodeId(findTraceNodeId(analysis.graph, item.location));
   }
 
-  async function handleStartPreview(projectRoot: string) {
-    if (!analysis) return;
-    const repoUrl = analysis.repoUrl;
-    setSession({ id: "browser", repoUrl, status: "queued" });
-    setPreviewLogs([]);
-    setIsStartingPreview(true);
-    try {
-      const response = await fetch("/api/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ analysisId: analysis.analysisId, projectRoot, repoUrl }),
-      });
-      const body = (await response.json()) as PreviewBundle | { error?: string };
-      if (!response.ok || !("files" in body)) {
-        throw new Error("error" in body ? body.error : "Preview bundle could not be created.");
-      }
-
-      const { runPreviewBundle } = await import("@/lib/preview/webcontainer-client");
-      const statusMap = {
-        booting: "analyzing",
-        installing: "starting",
-        starting: "starting",
-        ready: "ready",
-      } as const;
-      await runPreviewBundle(body, {
-        onStatus: (status) => {
-          setSession((current) =>
-            current ? { ...current, status: statusMap[status], framework: body.framework } : current,
-          );
-        },
-        onLog: (line) => {
-          setPreviewLogs((current) => [...current.slice(-199), line]);
-        },
-        onServerReady: (url) => {
-          setSession((current) =>
-            current ? { ...current, status: "ready", previewUrl: url } : current,
-          );
-        },
-        onError: (message) => {
-          setSession((current) =>
-            current && current.status !== "ready"
-              ? { ...current, status: "failed", error: message }
-              : current,
-          );
-        },
-      });
-    } catch (error) {
-      setSession({
-        id: "browser",
-        repoUrl,
-        status: "failed",
-        error: error instanceof Error ? error.message : "The in-browser preview could not start.",
-      });
-      setIsStartingPreview(false);
-    }
-  }
-
-  function handleStopPreview() {
-    void import("@/lib/preview/webcontainer-client").then(({ stopPreview }) => stopPreview());
-    setSession(null);
-    setPreviewLogs([]);
-    setIsStartingPreview(false);
-  }
-
   async function handleTrace(question: string) {
     if (!analysis) return;
     setIsTracing(true);
@@ -182,7 +108,11 @@ export default function Home() {
       const response = await fetch("/api/trace", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ analysisId: analysis.analysisId, question }),
+        body: JSON.stringify({
+          analysisId: analysis.analysisId,
+          repoUrl: analysis.repoUrl,
+          question,
+        }),
       });
       const body = (await response.json()) as
         | TraceResult
@@ -208,9 +138,7 @@ export default function Home() {
   }
 
   function handleReset() {
-    void import("@/lib/preview/webcontainer-client").then(({ stopPreview }) => stopPreview());
     resetResults();
-    setIsStartingPreview(false);
     window.setTimeout(() => document.getElementById("repo-url")?.focus(), 0);
   }
 
@@ -219,28 +147,28 @@ export default function Home() {
       <a className="skip-link" href="#repository-heading">Skip to repository analysis</a>
       <nav className="nav" aria-label="Primary navigation">
         <a className="brand" href="#top" aria-label="RepoLens home"><span>RL</span>RepoLens</a>
-        <p>See the interface inside any public GitHub repository.</p>
+        <p>Find repository gaps and useful contributions from verified source evidence.</p>
       </nav>
 
       <header className="hero" id="top">
-        <p className="eyebrow">GitHub-to-interface visualizer</p>
-        <h1>What does this repo look like, and which code makes it?</h1>
+        <p className="eyebrow">Repository audit &amp; contribution finder</p>
+        <h1>What should we improve in this repository?</h1>
         <p className="hero__copy">
-          Paste a public GitHub repository. RepoLens inspects the source read-only, reconstructs a
-          safe visual preview of the interface it contains, and connects every screen and component
-          back to the files that create it. No repository code is executed.
+          Paste a public GitHub repository. RepoLens inspects it read-only, identifies evidence-backed
+          gaps, names possibly unreferenced files, and turns reliable findings into contribution tasks.
+          Repository code is never executed.
         </p>
       </header>
 
       <section className="how-it-works" aria-labelledby="how-it-works-heading">
         <div className="how-it-works__intro">
           <p className="section-label">How it works</p>
-          <h2 id="how-it-works-heading">Fetch → detect → preview → connect</h2>
+          <h2 id="how-it-works-heading">Inspect → verify → improve</h2>
         </div>
         <ol>
-          <li><span>1</span><div><strong>Fetch &amp; analyze</strong><p>Read metadata, manifests, and source read-only. Detect the project type, frameworks, and monorepo packages.</p></div></li>
-          <li><span>2</span><div><strong>Detect the interface</strong><p>Find pages, routes, popups, components, styles, and assets, including Chrome-extension popups.</p></div></li>
-          <li><span>3</span><div><strong>Preview &amp; connect</strong><p>Explore a static interface gallery, click any screen to see its source, and trace features through the architecture graph.</p></div></li>
+          <li><span>1</span><div><strong>Inspect the repository</strong><p>Read public metadata, manifests, documentation, workflows, and supported source without executing it.</p></div></li>
+          <li><span>2</span><div><strong>Verify gaps with evidence</strong><p>Check community health, setup, tests, CI, maintainability, accessibility, and static source relationships.</p></div></li>
+          <li><span>3</span><div><strong>Choose useful work</strong><p>Review prioritized findings, exact files, reliability notes, and contribution-ready tasks.</p></div></li>
         </ol>
       </section>
 
@@ -276,19 +204,24 @@ export default function Home() {
             </button>
           </div>
 
-          <div id="project-summary">
+          <div id="start-here">
+            <AuditOverview analysis={analysis} />
+          </div>
+
+          <div id="gaps">
+            <AuditFindings analysis={analysis} />
+          </div>
+
+          <div id="opportunities">
+            <ContributionOpportunities analysis={analysis} />
+          </div>
+
+          <div id="repository-explorer">
+            <RepositoryExplorer analysis={analysis} />
             <ProjectSummary analysis={analysis} />
           </div>
 
-          <div id="interface">
-            <InterfaceGallery
-              analysis={analysis}
-              selectedItemId={selectedGalleryId}
-              onSelectItem={handleSelectGalleryItem}
-            />
-          </div>
-
-          <div className="code-insight-workspace" id="code-insight">
+          <div className="code-insight-workspace">
             <ArchitecturePanel
               analysis={analysis}
               isLoading={false}
@@ -308,14 +241,11 @@ export default function Home() {
             />
           </div>
 
-          <div id="live-preview">
-            <LivePreviewPanel
+          <div id="interface">
+            <InterfaceGallery
               analysis={analysis}
-              session={session}
-              previewLogs={previewLogs}
-              isStarting={isStartingPreview}
-              onStartPreview={handleStartPreview}
-              onStopPreview={handleStopPreview}
+              selectedItemId={selectedGalleryId}
+              onSelectItem={handleSelectGalleryItem}
             />
           </div>
         </>

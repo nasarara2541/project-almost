@@ -49,7 +49,6 @@ describe("generic project detection", () => {
     expect(project).toMatchObject({
       projectType: "monorepo",
       monorepo: true,
-      previewAvailable: true,
       source: "github-readonly",
       defaultBranch: "main",
     });
@@ -61,17 +60,13 @@ describe("generic project detection", () => {
         expect.objectContaining({ root: "packages/ui", framework: "react", runnable: false }),
       ]),
     );
-    expect(project.previewReason).toMatch(/in-browser preview/i);
   });
 
-  it("offers preview for the bundled fixture candidate", async () => {
+  it("produces an audit for the bundled fixture", async () => {
     const manager = new AnalysisSessionManager(60_000);
     const result = await manager.create(BUNDLED_FIXTURE_REPO_URL);
-    expect(result.project.previewAvailable).toBe(true);
-    expect(result.project.previewCandidates[0]).toMatchObject({ root: ".", framework: "vite" });
-    expect(manager.resolvePreviewRepository(result.analysisId, ".")?.sourcePath).toContain(
-      "fixtures/sample-repo",
-    );
+    expect(result.audit.coverage.fetchedFiles).toBeGreaterThan(0);
+    expect(result.audit.findings.length).toBeGreaterThan(0);
     await manager.dispose();
   });
 });
@@ -116,6 +111,38 @@ describe("read-only GitHub source acquisition", () => {
     );
     expect(await stat(path.join(fetched.repository.sourcePath, "image.png")).catch(() => null)).toBeNull();
     expect(fetcher).toHaveBeenCalledTimes(6); // metadata, branch, tree, 2 sources, 1 best-effort asset
+    await fetched.cleanup();
+  });
+
+  it("skips oversized files instead of rejecting the whole repository", async () => {
+    const packageSource = JSON.stringify({ name: "remote-app" });
+    const oversizedPath = "dist-like/generated-bundle.js";
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/repos/example/remote")) {
+        return Response.json({ private: false, default_branch: "main" });
+      }
+      if (url.includes("/branches/main")) return Response.json({ commit: { sha: "abc123" } });
+      if (url.includes("/git/trees/abc123")) {
+        return Response.json({
+          truncated: false,
+          tree: [
+            { path: "package.json", mode: "100644", type: "blob", size: packageSource.length },
+            { path: oversizedPath, mode: "100644", type: "blob", size: 512 * 1024 + 1 },
+          ],
+        });
+      }
+      if (url.endsWith("/package.json")) return new Response(packageSource);
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const fetched = await fetchPublicGitHubRepository("https://github.com/example/remote", fetcher);
+    temporaryRoots.push(fetched.repository.sourcePath);
+    expect(await readFile(path.join(fetched.repository.sourcePath, "package.json"), "utf8")).toBe(
+      packageSource,
+    );
+    expect(await stat(path.join(fetched.repository.sourcePath, oversizedPath)).catch(() => null)).toBeNull();
+    expect(fetcher).not.toHaveBeenCalledWith(expect.stringContaining(oversizedPath), expect.anything());
     await fetched.cleanup();
   });
 });

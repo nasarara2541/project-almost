@@ -113,7 +113,7 @@ export function InterfaceGallery({ analysis, selectedItemId, onSelectItem }: Int
     return (
       <section className="interface-gallery" aria-labelledby="interface-heading">
         <div className="interface-gallery__heading">
-          <span className="step-number">02</span>
+          <span className="step-number">05</span>
           <div>
             <p className="section-label">Interface</p>
             <h2 id="interface-heading">Interface preview</h2>
@@ -167,7 +167,7 @@ export function InterfaceGallery({ analysis, selectedItemId, onSelectItem }: Int
   return (
     <section className="interface-gallery" aria-labelledby="interface-heading">
       <div className="interface-gallery__heading">
-        <span className="step-number">02</span>
+        <span className="step-number">05</span>
         <div>
           <p className="section-label">Interface</p>
           <h2 id="interface-heading">Interface preview</h2>

@@ -64,7 +64,7 @@ function locationFor(
   };
 }
 
-export function parseRelativeImports(source: string, filePath = "source.tsx"): ParsedImport[] {
+export function parseStaticImports(source: string, filePath = "source.tsx"): ParsedImport[] {
   const sourceFile = ts.createSourceFile(
     filePath,
     source,
@@ -75,7 +75,6 @@ export function parseRelativeImports(source: string, filePath = "source.tsx"): P
   const imports: ParsedImport[] = [];
 
   const addImport = (specifier: string, node: ts.Node) => {
-    if (!specifier.startsWith(".")) return;
     const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
     imports.push({ specifier, line: position.line + 1 });
   };
@@ -104,6 +103,10 @@ export function parseRelativeImports(source: string, filePath = "source.tsx"): P
 
   visit(sourceFile);
   return imports;
+}
+
+export function parseRelativeImports(source: string, filePath = "source.tsx"): ParsedImport[] {
+  return parseStaticImports(source, filePath).filter((item) => item.specifier.startsWith("."));
 }
 
 export function detectReactComponents(source: string, filePath: string): ParsedSymbol[] {
@@ -199,7 +202,7 @@ export function parseSourceFile(
   return {
     absolutePath,
     relativePath,
-    imports: parseRelativeImports(source, relativePath),
+    imports: parseStaticImports(source, relativePath),
     components: detectReactComponents(source, relativePath),
     serviceFunctions: detectServiceFunctions(source, relativePath),
     entryPoint: detectEntryPoint(source, relativePath),

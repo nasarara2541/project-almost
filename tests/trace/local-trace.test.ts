@@ -25,6 +25,7 @@ describe("deterministic local tracing", () => {
     expect(trace.provider).toBe("local");
     expect(trace.steps.length).toBeGreaterThan(0);
     expect(trace.steps.map((step) => step.location.file)).toContain("src/pages/SettingsPage.tsx");
+    expect(trace.steps.map((step) => step.location.file)).not.toContain("src/pages/HomePage.tsx");
     // Every cited file/symbol must exist in the analysis — validation throws otherwise.
     expect(() => validateAndCanonicalizeTrace(trace, analysis)).not.toThrow();
   });

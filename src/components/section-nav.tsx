@@ -11,12 +11,12 @@ export type SectionId =
 type Section = { id: SectionId; label: string };
 
 const SECTIONS: Section[] = [
-  { id: "top", label: "Overview" },
-  { id: "start-here", label: "Start here" },
-  { id: "gaps", label: "Gaps" },
-  { id: "opportunities", label: "Contribute" },
-  { id: "repository-explorer", label: "Explorer" },
-  { id: "interface", label: "Interface" },
+  { id: "top", label: "Home" },
+  { id: "start-here", label: "Summary" },
+  { id: "gaps", label: "Issues" },
+  { id: "opportunities", label: "Tasks" },
+  { id: "repository-explorer", label: "Files" },
+  { id: "interface", label: "UI map" },
 ];
 
 type SectionNavProps = {

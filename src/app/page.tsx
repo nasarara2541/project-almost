@@ -175,7 +175,7 @@ export default function Home() {
         >
           <span>RL</span>RepoLens
         </a>
-        <p>Find repository gaps and useful contributions from verified source evidence.</p>
+        <p>Turn a public repository into a clear, prioritized action plan.</p>
       </nav>
 
       {showOverview ? (
@@ -186,26 +186,13 @@ export default function Home() {
           aria-labelledby={analysis ? "section-nav-top" : undefined}
         >
           <header className="hero" id="top">
-            <p className="eyebrow">Repository audit &amp; contribution finder</p>
-            <h1>What should we improve in this repository?</h1>
+            <p className="eyebrow">Open-source repository health check</p>
+            <h1>Find the best thing to fix next.</h1>
             <p className="hero__copy">
-              Paste a public GitHub repository. RepoLens inspects it read-only, identifies evidence-backed
-              gaps, names possibly unreferenced files, and turns reliable findings into contribution tasks.
-              Repository code is never executed.
+              Paste a public GitHub repository and get a short, evidence-backed list of issues,
+              unused files, and contribution-ready tasks. No repository code is executed.
             </p>
           </header>
-
-          <section className="how-it-works" aria-labelledby="how-it-works-heading">
-            <div className="how-it-works__intro">
-              <p className="section-label">How it works</p>
-              <h2 id="how-it-works-heading">Inspect → verify → improve</h2>
-            </div>
-            <ol>
-              <li><span>1</span><div><strong>Inspect the repository</strong><p>Read public metadata, manifests, documentation, workflows, and supported source without executing it.</p></div></li>
-              <li><span>2</span><div><strong>Verify gaps with evidence</strong><p>Check community health, setup, tests, CI, maintainability, accessibility, and static source relationships.</p></div></li>
-              <li><span>3</span><div><strong>Choose useful work</strong><p>Review prioritized findings, exact files, reliability notes, and contribution-ready tasks.</p></div></li>
-            </ol>
-          </section>
 
           <RepositoryForm
             repoUrl={repoUrl}
@@ -214,6 +201,18 @@ export default function Home() {
             onRepoUrlChange={setRepoUrl}
             onSubmit={handleAnalyze}
           />
+
+          <section className="how-it-works" aria-labelledby="how-it-works-heading">
+            <div className="how-it-works__intro">
+              <p className="section-label">How it works</p>
+              <h2 id="how-it-works-heading">From repository to next step</h2>
+            </div>
+            <ol>
+              <li><span>1</span><div><strong>Scan the source</strong><p>Read the files, setup, tests, and documentation safely.</p></div></li>
+              <li><span>2</span><div><strong>Rank what matters</strong><p>Separate high-value problems from low-confidence guesses.</p></div></li>
+              <li><span>3</span><div><strong>Pick a task</strong><p>Get the exact files, evidence, and a useful next action.</p></div></li>
+            </ol>
+          </section>
         </div>
       ) : null}
 
@@ -243,7 +242,7 @@ export default function Home() {
 
           {activeSection === "start-here" ? (
             <section id="section-view-start-here" className="report-view" role="tabpanel" aria-labelledby="section-nav-start-here">
-              <AuditOverview analysis={analysis} />
+              <AuditOverview analysis={analysis} onViewGaps={() => handleSelectSection("gaps")} />
             </section>
           ) : null}
 

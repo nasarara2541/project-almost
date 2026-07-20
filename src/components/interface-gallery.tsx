@@ -115,8 +115,8 @@ export function InterfaceGallery({ analysis, selectedItemId, onSelectItem }: Int
         <div className="interface-gallery__heading">
           <span className="step-number">05</span>
           <div>
-            <p className="section-label">Interface</p>
-            <h2 id="interface-heading">Interface preview</h2>
+            <p className="section-label">UI map</p>
+            <h2 id="interface-heading">Screens and components</h2>
           </div>
         </div>
         <div className="no-interface" role="status">
@@ -169,10 +169,9 @@ export function InterfaceGallery({ analysis, selectedItemId, onSelectItem }: Int
       <div className="interface-gallery__heading">
         <span className="step-number">05</span>
         <div>
-          <p className="section-label">Interface</p>
-          <h2 id="interface-heading">Interface preview</h2>
-          <p className="interface-gallery__summary">{report.summary} Previews are reconstructed
-            statically from source and rendered without executing any repository code.</p>
+          <p className="section-label">UI map</p>
+          <h2 id="interface-heading">Screens and components</h2>
+          <p className="interface-gallery__summary">{report.summary} Select anything to see the source file behind it.</p>
         </div>
         {subprojectRoots.length > 1 ? (
           <label className="subproject-picker">

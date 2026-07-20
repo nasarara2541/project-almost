@@ -26,9 +26,9 @@ export function RepositoryExplorer({ analysis }: { analysis: AnalyzeResult }) {
       <div className="results-section-heading">
         <span className="step-number">04</span>
         <div>
-          <p className="section-label">Repository explorer</p>
-          <h2 id="repository-explorer-heading">Inspect the source behind the audit</h2>
-          <p>Search parsed source files and review their detected imports, dependents, components, and services.</p>
+          <p className="section-label">File explorer</p>
+          <h2 id="repository-explorer-heading">Understand any file</h2>
+          <p>Search a file to see what it imports, what uses it, and whether it may be unused.</p>
         </div>
       </div>
       <div className="file-explorer">

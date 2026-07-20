@@ -28,6 +28,7 @@ export function AuditFindings({ analysis }: { analysis: AnalyzeResult }) {
   const [category, setCategory] = useState<AuditCategory | "all">("all");
   const [severity, setSeverity] = useState<AuditSeverity | "all">("all");
   const [query, setQuery] = useState("");
+  const [expandedFindingId, setExpandedFindingId] = useState<string | null>(null);
   const findings = useMemo(() => {
     const target = query.trim().toLowerCase();
     return analysis.audit.findings.filter((finding) => {
@@ -47,9 +48,9 @@ export function AuditFindings({ analysis }: { analysis: AnalyzeResult }) {
       <div className="results-section-heading">
         <span className="step-number">02</span>
         <div>
-          <p className="section-label">Evidence-backed gaps</p>
-          <h2 id="audit-findings-heading">What deserves attention</h2>
-          <p>Every finding names its evidence, confidence, limits, and a concrete next action.</p>
+          <p className="section-label">Prioritized issues</p>
+          <h2 id="audit-findings-heading">Issues to fix</h2>
+          <p>Start with high priority. Each issue shows why it matters and what to do next.</p>
         </div>
       </div>
 
@@ -76,63 +77,83 @@ export function AuditFindings({ analysis }: { analysis: AnalyzeResult }) {
 
       {findings.length > 0 ? (
         <div className="finding-list">
-          {findings.map((finding, index) => (
-            <article key={finding.id} className={`finding-card finding-card--${finding.severity}`}>
-              <div className="finding-card__topline">
-                <span className={`severity-pill severity-pill--${finding.severity}`}>{severityLabels[finding.severity]}</span>
-                <span>{categoryLabels[finding.category]}</span>
-                <span>{finding.confidence} confidence</span>
-                <span>{finding.difficulty.replace("-", " ")}</span>
-              </div>
-              <div className="finding-card__heading">
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <div><h3>{finding.title}</h3><p>{finding.summary}</p></div>
-              </div>
+          {findings.map((finding, index) => {
+            const isExpanded = expandedFindingId === finding.id;
+            const detailsId = `finding-details-${finding.id.replace(/[^a-z0-9_-]+/gi, "-")}`;
+            return (
+              <article key={finding.id} className={`finding-card finding-card--${finding.severity} ${isExpanded ? "is-expanded" : ""}`}>
+                <button
+                  type="button"
+                  className="finding-card__toggle"
+                  aria-expanded={isExpanded}
+                  aria-controls={detailsId}
+                  onClick={() => setExpandedFindingId(isExpanded ? null : finding.id)}
+                >
+                  <span className="finding-card__index">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="finding-card__summary-copy">
+                    <span className="finding-card__topline">
+                      <span className={`severity-pill severity-pill--${finding.severity}`}>{severityLabels[finding.severity]}</span>
+                      <span>{categoryLabels[finding.category]}</span>
+                      <span>{finding.difficulty.replace("-", " ")}</span>
+                    </span>
+                    <strong className="finding-card__title">{finding.title}</strong>
+                    <span className="finding-card__summary">{finding.summary}</span>
+                  </span>
+                  <span className="finding-card__expand-label">
+                    {isExpanded ? "Close" : "View"}
+                    <span className="finding-card__chevron" aria-hidden="true">⌄</span>
+                  </span>
+                </button>
 
-              <div className="finding-explanation">
-                <div><strong>Why it matters</strong><p>{finding.whyItMatters}</p></div>
-                <div><strong>Recommended action</strong><p>{finding.recommendation}</p></div>
-              </div>
+                {isExpanded ? (
+                  <div className="finding-card__details" id={detailsId}>
+                    <div className="finding-explanation">
+                      <div><strong>Why it matters</strong><p>{finding.whyItMatters}</p></div>
+                      <div><strong>What to do</strong><p>{finding.recommendation}</p></div>
+                    </div>
 
-              <details className="finding-evidence" open={finding.id === "maintainability:possibly-unreferenced"}>
-                <summary>Review evidence ({finding.evidence.length})</summary>
-                <ul>
-                  {finding.evidence.map((item, evidenceIndex) => (
-                    <li key={`${item.label}:${item.value}:${evidenceIndex}`}>
-                      <span className={`evidence-status evidence-status--${item.status}`} />
-                      <div>
-                        <strong>{item.label}</strong>
-                        <span>{item.value}</span>
-                        {item.location && linksToGitHub ? (
-                          <a href={githubFileUrl(analysis.repoUrl, analysis.project.defaultBranch, item.location.file, item.location.lineStart)} target="_blank" rel="noreferrer">
-                            {item.location.file}{item.location.lineStart ? `:${item.location.lineStart}` : ""} ↗
-                          </a>
-                        ) : item.location ? <code>{item.location.file}{item.location.lineStart ? `:${item.location.lineStart}` : ""}</code> : null}
+                    <details className="finding-evidence" open={finding.id === "maintainability:possibly-unreferenced"}>
+                      <summary>Evidence and reliability ({finding.evidence.length})</summary>
+                      <ul>
+                        {finding.evidence.map((item, evidenceIndex) => (
+                          <li key={`${item.label}:${item.value}:${evidenceIndex}`}>
+                            <span className={`evidence-status evidence-status--${item.status}`} />
+                            <div>
+                              <strong>{item.label}</strong>
+                              <span>{item.value}</span>
+                              {item.location && linksToGitHub ? (
+                                <a href={githubFileUrl(analysis.repoUrl, analysis.project.defaultBranch, item.location.file, item.location.lineStart)} target="_blank" rel="noreferrer">
+                                  {item.location.file}{item.location.lineStart ? `:${item.location.lineStart}` : ""} ↗
+                                </a>
+                              ) : item.location ? <code>{item.location.file}{item.location.lineStart ? `:${item.location.lineStart}` : ""}</code> : null}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+
+                    {finding.files.length > 0 ? (
+                      <div className="finding-files">
+                        <strong>Related files</strong>
+                        <div>
+                          {finding.files.map((file) => linksToGitHub ? (
+                            <a key={file} href={githubFileUrl(analysis.repoUrl, analysis.project.defaultBranch, file)} target="_blank" rel="noreferrer">{file} ↗</a>
+                          ) : <code key={file}>{file}</code>)}
+                        </div>
                       </div>
-                    </li>
-                  ))}
-                </ul>
-              </details>
+                    ) : null}
 
-              {finding.files.length > 0 ? (
-                <div className="finding-files">
-                  <strong>Named files</strong>
-                  <div>
-                    {finding.files.map((file) => linksToGitHub ? (
-                      <a key={file} href={githubFileUrl(analysis.repoUrl, analysis.project.defaultBranch, file)} target="_blank" rel="noreferrer">{file} ↗</a>
-                    ) : <code key={file}>{file}</code>)}
+                    {finding.limitation ? <p className="finding-limitation"><strong>Reliability note:</strong> {finding.limitation}</p> : null}
+
+                    <div className="contribution-task">
+                      <div><strong>Ready-to-copy task</strong><p>{finding.contributionTask}</p></div>
+                      <CopyButton value={finding.contributionTask} label="Contribution task" />
+                    </div>
                   </div>
-                </div>
-              ) : null}
-
-              {finding.limitation ? <p className="finding-limitation"><strong>Reliability note:</strong> {finding.limitation}</p> : null}
-
-              <div className="contribution-task">
-                <div><strong>Contribution task</strong><p>{finding.contributionTask}</p></div>
-                <CopyButton value={finding.contributionTask} label="Contribution task" />
-              </div>
-            </article>
-          ))}
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="empty-filter-state"><strong>No findings match these filters.</strong><p>Clear the search or choose another category.</p></div>

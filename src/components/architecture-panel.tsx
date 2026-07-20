@@ -31,10 +31,10 @@ const columnByType: Record<ArchitectureNode["type"], number> = {
 };
 
 const colorByType: Record<ArchitectureNode["type"], string> = {
-  route: "#ff8a3d",
-  component: "#7db7ff",
-  api: "#c69cff",
-  file: "#8b98b8",
+  route: "#e7632f",
+  component: "#2f70c9",
+  api: "#7650bd",
+  file: "#64748b",
 };
 
 function nodeContent(node: ArchitectureNode) {
@@ -91,11 +91,11 @@ export function ArchitecturePanel({
         position: { x: columnByType[node.type] * 210, y: row * 108 },
         style: {
           width: 174,
-          color: "#f5f7fa",
-          background: isSelected ? `${color}26` : "#121925",
-          border: `${isSelected || isTraced ? 2 : 1}px solid ${isTraced ? "#4fd8c4" : isSelected || isConnected ? color : "#2a3546"}`,
+          color: "#1f2937",
+          background: isSelected ? `${color}18` : "#ffffff",
+          border: `${isSelected || isTraced ? 2 : 1}px solid ${isTraced ? "#0f9888" : isSelected || isConnected ? color : "#d8e0e9"}`,
           borderRadius: 10,
-          boxShadow: isTraced ? "0 0 0 4px #4fd8c418" : isSelected ? `0 0 0 4px ${color}14` : "none",
+          boxShadow: isTraced ? "0 0 0 4px #0f988818" : isSelected ? `0 0 0 4px ${color}12` : "0 3px 12px rgba(30, 41, 59, 0.06)",
           opacity: trace ? (isTraced ? 1 : 0.28) : selectedNodeId && !isConnected ? 0.4 : 1,
           padding: 0,
         },
@@ -115,7 +115,7 @@ export function ArchitecturePanel({
         target: edge.target,
         animated: highlighted || traced,
         style: {
-          stroke: traced ? "#4fd8c4" : highlighted ? "#ff8a3d" : "#445066",
+          stroke: traced ? "#0f9888" : highlighted ? "#e7632f" : "#aeb9c7",
           strokeWidth: traced || highlighted ? 2.2 : 1.2,
           opacity: trace ? (traced ? 1 : 0.15) : selectedNodeId && !highlighted ? 0.25 : 0.8,
         },
@@ -188,7 +188,7 @@ export function ArchitecturePanel({
               elementsSelectable
               proOptions={{ hideAttribution: true }}
             >
-              <Background color="#263143" gap={24} size={1} />
+              <Background color="#dce3eb" gap={24} size={1} />
               <Controls showInteractive={false} position="bottom-right" />
             </ReactFlow>
           </div>

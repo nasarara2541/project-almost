@@ -9,7 +9,7 @@ import { InterfaceGallery } from "@/components/interface-gallery";
 import { ProjectSummary } from "@/components/project-summary";
 import { RepositoryExplorer } from "@/components/repository-explorer";
 import { RepositoryForm } from "@/components/repository-form";
-import { SectionNav } from "@/components/section-nav";
+import { SectionNav, type SectionId } from "@/components/section-nav";
 import { TracePanel } from "@/components/trace-panel";
 import { BUNDLED_FIXTURE_REPO_URL } from "@/lib/preview/constants";
 import { findTraceNodeId } from "@/lib/trace/highlighting";
@@ -31,6 +31,7 @@ export default function Home() {
   const [isTracing, setIsTracing] = useState(false);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [traceErrorCode, setTraceErrorCode] = useState<TraceErrorCode | null>(null);
+  const [activeSection, setActiveSection] = useState<SectionId>("top");
 
   useEffect(() => {
     const analysisId = analysis?.analysisId;
@@ -51,6 +52,7 @@ export default function Home() {
     setTrace(null);
     setTraceError(null);
     setTraceErrorCode(null);
+    setActiveSection("top");
   }
 
   async function handleAnalyze(event: React.FormEvent<HTMLFormElement>) {
@@ -67,6 +69,7 @@ export default function Home() {
       if (!response.ok || !("graph" in body)) {
         throw new Error("error" in body ? body.error : "Repository analysis failed.");
       }
+      setActiveSection("start-here");
       setAnalysis(body);
       const firstScreen = body.interface.screens.find((screen) => screen.previewHtml);
       if (firstScreen) {
@@ -142,43 +145,77 @@ export default function Home() {
     window.setTimeout(() => document.getElementById("repo-url")?.focus(), 0);
   }
 
+  function handleSelectSection(section: SectionId) {
+    setActiveSection(section);
+    window.history.replaceState(null, "", section === "top" ? "#top" : `#${section}`);
+    window.requestAnimationFrame(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      });
+    });
+  }
+
+  const showOverview = !analysis || activeSection === "top";
+
   return (
-    <main>
-      <a className="skip-link" href="#repository-heading">Skip to repository analysis</a>
+    <main className={analysis ? "main--report" : undefined}>
+      <a
+        className="skip-link"
+        href={analysis && activeSection !== "top" ? `#section-view-${activeSection}` : "#repository-heading"}
+      >
+        Skip to repository analysis
+      </a>
       <nav className="nav" aria-label="Primary navigation">
-        <a className="brand" href="#top" aria-label="RepoLens home"><span>RL</span>RepoLens</a>
+        <a
+          className="brand"
+          href="#top"
+          aria-label="RepoLens home"
+          onClick={analysis ? (event) => { event.preventDefault(); handleSelectSection("top"); } : undefined}
+        >
+          <span>RL</span>RepoLens
+        </a>
         <p>Find repository gaps and useful contributions from verified source evidence.</p>
       </nav>
 
-      <header className="hero" id="top">
-        <p className="eyebrow">Repository audit &amp; contribution finder</p>
-        <h1>What should we improve in this repository?</h1>
-        <p className="hero__copy">
-          Paste a public GitHub repository. RepoLens inspects it read-only, identifies evidence-backed
-          gaps, names possibly unreferenced files, and turns reliable findings into contribution tasks.
-          Repository code is never executed.
-        </p>
-      </header>
+      {showOverview ? (
+        <div
+          id="section-view-top"
+          className="report-view report-view--overview"
+          role={analysis ? "tabpanel" : undefined}
+          aria-labelledby={analysis ? "section-nav-top" : undefined}
+        >
+          <header className="hero" id="top">
+            <p className="eyebrow">Repository audit &amp; contribution finder</p>
+            <h1>What should we improve in this repository?</h1>
+            <p className="hero__copy">
+              Paste a public GitHub repository. RepoLens inspects it read-only, identifies evidence-backed
+              gaps, names possibly unreferenced files, and turns reliable findings into contribution tasks.
+              Repository code is never executed.
+            </p>
+          </header>
 
-      <section className="how-it-works" aria-labelledby="how-it-works-heading">
-        <div className="how-it-works__intro">
-          <p className="section-label">How it works</p>
-          <h2 id="how-it-works-heading">Inspect → verify → improve</h2>
+          <section className="how-it-works" aria-labelledby="how-it-works-heading">
+            <div className="how-it-works__intro">
+              <p className="section-label">How it works</p>
+              <h2 id="how-it-works-heading">Inspect → verify → improve</h2>
+            </div>
+            <ol>
+              <li><span>1</span><div><strong>Inspect the repository</strong><p>Read public metadata, manifests, documentation, workflows, and supported source without executing it.</p></div></li>
+              <li><span>2</span><div><strong>Verify gaps with evidence</strong><p>Check community health, setup, tests, CI, maintainability, accessibility, and static source relationships.</p></div></li>
+              <li><span>3</span><div><strong>Choose useful work</strong><p>Review prioritized findings, exact files, reliability notes, and contribution-ready tasks.</p></div></li>
+            </ol>
+          </section>
+
+          <RepositoryForm
+            repoUrl={repoUrl}
+            isAnalyzing={isAnalyzing}
+            verifiedDemo={repoUrl.trim().toLowerCase() === BUNDLED_FIXTURE_REPO_URL}
+            onRepoUrlChange={setRepoUrl}
+            onSubmit={handleAnalyze}
+          />
         </div>
-        <ol>
-          <li><span>1</span><div><strong>Inspect the repository</strong><p>Read public metadata, manifests, documentation, workflows, and supported source without executing it.</p></div></li>
-          <li><span>2</span><div><strong>Verify gaps with evidence</strong><p>Check community health, setup, tests, CI, maintainability, accessibility, and static source relationships.</p></div></li>
-          <li><span>3</span><div><strong>Choose useful work</strong><p>Review prioritized findings, exact files, reliability notes, and contribution-ready tasks.</p></div></li>
-        </ol>
-      </section>
-
-      <RepositoryForm
-        repoUrl={repoUrl}
-        isAnalyzing={isAnalyzing}
-        verifiedDemo={repoUrl.trim().toLowerCase() === BUNDLED_FIXTURE_REPO_URL}
-        onRepoUrlChange={setRepoUrl}
-        onSubmit={handleAnalyze}
-      />
+      ) : null}
 
       {isAnalyzing ? (
         <section className="analysis-state" aria-live="polite">
@@ -195,7 +232,7 @@ export default function Home() {
 
       {analysis ? (
         <>
-          <SectionNav />
+          <SectionNav activeId={activeSection} onSelect={handleSelectSection} />
 
           <div className="results-toolbar">
             <span className="workspace__address">{analysis.repoUrl}</span>
@@ -204,50 +241,59 @@ export default function Home() {
             </button>
           </div>
 
-          <div id="start-here">
-            <AuditOverview analysis={analysis} />
-          </div>
+          {activeSection === "start-here" ? (
+            <section id="section-view-start-here" className="report-view" role="tabpanel" aria-labelledby="section-nav-start-here">
+              <AuditOverview analysis={analysis} />
+            </section>
+          ) : null}
 
-          <div id="gaps">
-            <AuditFindings analysis={analysis} />
-          </div>
+          {activeSection === "gaps" ? (
+            <section id="section-view-gaps" className="report-view" role="tabpanel" aria-labelledby="section-nav-gaps">
+              <AuditFindings analysis={analysis} />
+            </section>
+          ) : null}
 
-          <div id="opportunities">
-            <ContributionOpportunities analysis={analysis} />
-          </div>
+          {activeSection === "opportunities" ? (
+            <section id="section-view-opportunities" className="report-view" role="tabpanel" aria-labelledby="section-nav-opportunities">
+              <ContributionOpportunities analysis={analysis} />
+            </section>
+          ) : null}
 
-          <div id="repository-explorer">
-            <RepositoryExplorer analysis={analysis} />
-            <ProjectSummary analysis={analysis} />
-          </div>
+          {activeSection === "repository-explorer" ? (
+            <section id="section-view-repository-explorer" className="report-view" role="tabpanel" aria-labelledby="section-nav-repository-explorer">
+              <RepositoryExplorer analysis={analysis} />
+              <ProjectSummary analysis={analysis} />
+              <div className="code-insight-workspace">
+                <ArchitecturePanel
+                  analysis={analysis}
+                  isLoading={false}
+                  error={null}
+                  selectedNodeId={selectedNodeId}
+                  trace={trace}
+                  onSelectNode={setSelectedNodeId}
+                />
+                <TracePanel
+                  disabled={!analysis}
+                  isLoading={isTracing}
+                  error={traceError}
+                  errorCode={traceErrorCode}
+                  trace={trace}
+                  onAsk={handleTrace}
+                  onSelectLocation={handleTraceLocation}
+                />
+              </div>
+            </section>
+          ) : null}
 
-          <div className="code-insight-workspace">
-            <ArchitecturePanel
-              analysis={analysis}
-              isLoading={false}
-              error={null}
-              selectedNodeId={selectedNodeId}
-              trace={trace}
-              onSelectNode={setSelectedNodeId}
-            />
-            <TracePanel
-              disabled={!analysis}
-              isLoading={isTracing}
-              error={traceError}
-              errorCode={traceErrorCode}
-              trace={trace}
-              onAsk={handleTrace}
-              onSelectLocation={handleTraceLocation}
-            />
-          </div>
-
-          <div id="interface">
-            <InterfaceGallery
-              analysis={analysis}
-              selectedItemId={selectedGalleryId}
-              onSelectItem={handleSelectGalleryItem}
-            />
-          </div>
+          {activeSection === "interface" ? (
+            <section id="section-view-interface" className="report-view" role="tabpanel" aria-labelledby="section-nav-interface">
+              <InterfaceGallery
+                analysis={analysis}
+                selectedItemId={selectedGalleryId}
+                onSelectItem={handleSelectGalleryItem}
+              />
+            </section>
+          ) : null}
         </>
       ) : null}
     </main>

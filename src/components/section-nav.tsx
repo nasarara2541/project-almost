@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+export type SectionId =
+  | "top"
+  | "start-here"
+  | "gaps"
+  | "opportunities"
+  | "repository-explorer"
+  | "interface";
 
-type Section = { id: string; label: string };
+type Section = { id: SectionId; label: string };
 
 const SECTIONS: Section[] = [
   { id: "top", label: "Overview" },
@@ -13,51 +19,28 @@ const SECTIONS: Section[] = [
   { id: "interface", label: "Interface" },
 ];
 
-/**
- * A fixed rail of jump links so a long results page is a map, not a scroll.
- * Only mounted once analysis results exist, so every target section is
- * already in the DOM by the time it observes them.
- */
-export function SectionNav() {
-  const [activeId, setActiveId] = useState<string>(SECTIONS[0].id);
+type SectionNavProps = {
+  activeId: SectionId;
+  onSelect: (id: SectionId) => void;
+};
 
-  useEffect(() => {
-    const elements = SECTIONS.map((section) => document.getElementById(section.id)).filter(
-      (element): element is HTMLElement => Boolean(element),
-    );
-    if (elements.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (visible?.target.id) setActiveId(visible.target.id);
-      },
-      { rootMargin: "-15% 0px -65% 0px", threshold: [0, 0.25, 0.5, 1] },
-    );
-    for (const element of elements) observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  function jumpTo(event: React.MouseEvent<HTMLAnchorElement>, id: string) {
-    event.preventDefault();
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    setActiveId(id);
-  }
-
+/** A persistent report switcher. Only the selected report view is mounted. */
+export function SectionNav({ activeId, onSelect }: SectionNavProps) {
   return (
-    <nav className="section-nav" aria-label="Jump to section">
+    <nav className="section-nav" aria-label="Repository report sections">
       {SECTIONS.map((section) => (
-        <a
+        <button
           key={section.id}
-          href={`#${section.id}`}
-          onClick={(event) => jumpTo(event, section.id)}
+          id={`section-nav-${section.id}`}
+          type="button"
+          onClick={() => onSelect(section.id)}
+          aria-controls={`section-view-${section.id}`}
+          aria-current={activeId === section.id ? "page" : undefined}
           className={`section-nav__link ${activeId === section.id ? "is-active" : ""}`}
         >
           <span className="section-nav__dot" aria-hidden="true" />
           <span className="section-nav__label">{section.label}</span>
-        </a>
+        </button>
       ))}
     </nav>
   );

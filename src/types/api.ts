@@ -80,6 +80,8 @@ export type RepositoryProjectInfo = {
     | "chrome-extension"
     | "python"
     | "backend"
+    | "documentation"
+    | "catalog"
     | "mixed"
     | "unknown";
   frameworks: DetectedFramework[];
@@ -177,6 +179,7 @@ export type AnalyzedSourceFile = {
 export type AuditCategory =
   | "community"
   | "developer-experience"
+  | "documentation-quality"
   | "testing"
   | "maintainability"
   | "frontend-quality";
@@ -291,6 +294,7 @@ export type AuditEvidence = {
   value: string;
   status: "present" | "missing" | "signal";
   location?: CodeLocation;
+  url?: string;
 };
 
 export type AuditFinding = {
@@ -306,6 +310,8 @@ export type AuditFinding = {
   files: string[];
   difficulty: ContributionDifficulty;
   contributionTask: string;
+  /** False when the gap is real but an existing pull request already appears to address it. */
+  contributionReady?: boolean;
   limitation?: string;
 };
 

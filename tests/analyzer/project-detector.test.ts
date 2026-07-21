@@ -42,6 +42,24 @@ async function createMonorepo() {
 }
 
 describe("generic project detection", () => {
+  it("recognizes a Markdown link collection as a curated catalog", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "repolens-catalog-test-"));
+    temporaryRoots.push(root);
+    const links = Array.from(
+      { length: 30 },
+      (_, index) => `- [Project ${index}](https://github.com/example/project-${index})`,
+    ).join("\n");
+    await writeFile(path.join(root, "README.md"), `# Android projects\n\n${links}\n`);
+    await writeFile(path.join(root, "LICENSE"), "Apache License 2.0");
+
+    const project = await detectRepositoryProject(
+      { repoUrl: "https://github.com/example/catalog", sourcePath: root },
+      { defaultBranch: "main" },
+    );
+
+    expect(project.projectType).toBe("catalog");
+  });
+
   it("detects monorepos, package managers, frameworks, and runnable roots", async () => {
     const sourcePath = await createMonorepo();
     const project = await detectRepositoryProject(
@@ -75,6 +93,50 @@ describe("generic project detection", () => {
 });
 
 describe("read-only GitHub source acquisition", () => {
+  it("collects open pull-request context without making it a hard dependency", async () => {
+    const readme = "# Catalog\n";
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/repos/example/catalog")) {
+        return Response.json({
+          private: false,
+          default_branch: "main",
+          pushed_at: "2026-03-25T01:04:16Z",
+          open_issues_count: 1,
+        });
+      }
+      if (url.includes("/pulls?")) {
+        return Response.json([{
+          number: 12,
+          title: "Update README links",
+          html_url: "https://github.com/example/catalog/pull/12",
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-02-01T00:00:00Z",
+          draft: false,
+        }]);
+      }
+      if (url.includes("/branches/main")) return Response.json({ commit: { sha: "catalog123" } });
+      if (url.includes("/git/trees/catalog123")) {
+        return Response.json({
+          truncated: false,
+          tree: [{ path: "README.md", mode: "100644", type: "blob", size: readme.length }],
+        });
+      }
+      if (url.endsWith("/README.md")) return new Response(readme);
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const fetched = await fetchPublicGitHubRepository("https://github.com/example/catalog", fetcher);
+    temporaryRoots.push(fetched.repository.sourcePath);
+
+    expect(fetched.repository.activity).toMatchObject({
+      pushedAt: "2026-03-25T01:04:16Z",
+      pullRequestScan: "complete",
+      openPullRequests: [{ number: 12, title: "Update README links" }],
+    });
+    await fetched.cleanup();
+  });
+
   it("explains when an accessible repository has no first commit", async () => {
     const fetcher = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);

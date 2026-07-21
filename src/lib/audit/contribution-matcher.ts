@@ -7,7 +7,7 @@ import type {
 } from "@/types/api";
 
 const focusCategories: Record<Exclude<ContributorProfile["focus"], "any">, AuditCategory[]> = {
-  docs: ["community", "developer-experience"],
+  docs: ["community", "developer-experience", "documentation-quality"],
   tests: ["testing"],
   cleanup: ["maintainability"],
   frontend: ["frontend-quality"],

@@ -559,7 +559,11 @@ export async function detectInterface(options: {
     summary,
     message: hasVisualInterface
       ? undefined
-      : "No visual interface detected. This repository appears to be a CLI, library, backend, or data project.",
+      : project.projectType === "catalog"
+        ? "No application interface is expected. This repository is a curated content catalog."
+        : project.projectType === "documentation"
+          ? "No application interface is expected. This repository primarily contains documentation."
+          : "No visual interface detected. This repository appears to be a CLI, library, backend, or data project.",
     screens,
     components,
     styleFiles,

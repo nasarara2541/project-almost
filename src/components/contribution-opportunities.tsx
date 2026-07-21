@@ -37,6 +37,7 @@ const focusLabels = {
 const categoryLabels: Record<AuditCategory, string> = {
   community: "Community",
   "developer-experience": "Developer experience",
+  "documentation-quality": "Documentation quality",
   testing: "Testing & CI",
   maintainability: "Maintainability",
   "frontend-quality": "Frontend quality",

@@ -51,6 +51,26 @@ type SourceSignals = {
   imagesWithoutAlt: { file: string; line: number }[];
 };
 
+type MarkdownLink = {
+  file: string;
+  line: number;
+  url: string;
+  normalized: string;
+};
+
+type MarkdownDocumentSignals = {
+  file: string;
+  links: MarkdownLink[];
+  uniqueLinks: Set<string>;
+};
+
+type MarkdownSignals = {
+  documents: MarkdownDocumentSignals[];
+  links: MarkdownLink[];
+  insecureLinks: MarkdownLink[];
+  uniqueLinks: Set<string>;
+};
+
 type AuditInput = {
   repository: AnalysisRepository;
   inventory: WorkspaceInventory;
@@ -63,6 +83,7 @@ type AuditInput = {
 const categoryLabels: Record<AuditCategory, string> = {
   community: "Community readiness",
   "developer-experience": "Developer experience",
+  "documentation-quality": "Documentation quality",
   testing: "Testing & automation",
   maintainability: "Maintainability",
   "frontend-quality": "Frontend quality",
@@ -185,6 +206,122 @@ async function scanSourceSignals(
   return signals;
 }
 
+function normalizeExternalUrl(rawUrl: string): string | null {
+  const cleaned = rawUrl.replace(/[\],.;:!?]+$/g, "");
+  try {
+    const url = new URL(cleaned);
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    url.hash = "";
+    url.hostname = url.hostname.toLowerCase();
+    if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/$/, "");
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function scanMarkdownSignals(
+  repository: AnalysisRepository,
+  inventory: WorkspaceInventory,
+): Promise<MarkdownSignals> {
+  const documents: MarkdownDocumentSignals[] = [];
+  const links: MarkdownLink[] = [];
+  for (const file of inventory.files.filter((item) =>
+    [".md", ".mdx"].includes(path.posix.extname(item.path).toLowerCase()) &&
+    item.size <= MAX_SCANNED_FILE_BYTES,
+  )) {
+    const source = await readWorkspaceText(repository, file.path);
+    if (!source) continue;
+    const documentLinks: MarkdownLink[] = [];
+    for (const match of source.matchAll(/https?:\/\/[^\s)<>"']+/g)) {
+      const rawUrl = match[0].replace(/[\],.;:!?]+$/g, "");
+      const normalized = normalizeExternalUrl(rawUrl);
+      if (!normalized) continue;
+      const link = {
+        file: file.path,
+        line: lineForOffset(source, match.index ?? 0),
+        url: rawUrl,
+        normalized,
+      };
+      documentLinks.push(link);
+      links.push(link);
+    }
+    documents.push({
+      file: file.path,
+      links: documentLinks,
+      uniqueLinks: new Set(documentLinks.map((link) => link.normalized)),
+    });
+  }
+  return {
+    documents,
+    links,
+    insecureLinks: links.filter((link) => link.url.startsWith("http://") && !/^http:\/\/(?:localhost|127\.0\.0\.1)(?:[:/]|$)/i.test(link.url)),
+    uniqueLinks: new Set(links.map((link) => link.normalized)),
+  };
+}
+
+function normalizedPullRequestTitle(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function findOpenPullRequest(
+  repository: AnalysisRepository,
+  patterns: RegExp[],
+) {
+  return repository.activity?.openPullRequests.find((pullRequest) => {
+    const title = normalizedPullRequestTitle(pullRequest.title);
+    return patterns.some((pattern) => pattern.test(title));
+  });
+}
+
+async function hasAutomatedLinkCheck(
+  repository: AnalysisRepository,
+  inventory: WorkspaceInventory,
+): Promise<boolean> {
+  const workflowFiles = inventory.files.filter((file) =>
+    file.path.toLowerCase().startsWith(".github/workflows/") &&
+    [".yml", ".yaml"].includes(path.posix.extname(file.path).toLowerCase()),
+  );
+  for (const file of workflowFiles) {
+    const source = await readWorkspaceText(repository, file.path);
+    if (source && /(?:lychee|markdown-link-check|linkspector|linkinator|check[-_ ]links)/i.test(source)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function translationDriftEvidence(markdown: MarkdownSignals): {
+  files: string[];
+  evidence: AuditEvidence[];
+} | null {
+  const readmes = markdown.documents.filter((document) =>
+    /^readme(?:\.[^.]+)?\.mdx?$/i.test(path.posix.basename(document.file)) &&
+    document.uniqueLinks.size >= 10,
+  );
+  if (readmes.length < 2) return null;
+  const reference = readmes.find((document) => document.file.toLowerCase() === "readme.md")
+    ?? [...readmes].sort((a, b) => b.uniqueLinks.size - a.uniqueLinks.size)[0];
+  const drifted = readmes
+    .filter((document) => document.file !== reference.file)
+    .map((document) => {
+      const missing = [...reference.uniqueLinks].filter((link) => !document.uniqueLinks.has(link)).length;
+      const additional = [...document.uniqueLinks].filter((link) => !reference.uniqueLinks.has(link)).length;
+      const union = new Set([...reference.uniqueLinks, ...document.uniqueLinks]).size;
+      return { document, missing, additional, drift: union > 0 ? (missing + additional) / union : 0 };
+    })
+    .filter((item) => item.missing + item.additional >= 10 && item.drift >= 0.15);
+  if (drifted.length === 0) return null;
+  return {
+    files: [reference.file, ...drifted.map((item) => item.document.file)],
+    evidence: drifted.slice(0, 5).map((item) => sourceEvidence(
+      "Documentation variants differ",
+      `${item.document.file} is missing ${item.missing} links from ${reference.file} and contains ${item.additional} additional links.`,
+      item.document.file,
+    )),
+  };
+}
+
 function makeFinding(input: AuditFinding): AuditFinding {
   return input;
 }
@@ -256,6 +393,16 @@ function buildCoverage(input: AuditInput): AnalysisCoverage {
   if (scannableFiles > MAX_SCANNED_FILES) {
     limitations.push(`Content-level signals such as TODOs, environment variables, and image alt attributes were scanned in the first ${MAX_SCANNED_FILES} eligible files out of ${scannableFiles}.`);
   }
+  if (["documentation", "catalog"].includes(input.project.projectType)) {
+    limitations.push("This repository was evaluated as content rather than application source; documentation-specific checks replaced code, test, and dead-code rules.");
+  } else if (input.files.length === 0) {
+    limitations.push("No supported source files were parsed, so the repository readiness score is intentionally limited.");
+  }
+  if (input.repository.activity?.pullRequestScan === "partial") {
+    limitations.push("Only the 100 most recently updated open pull requests were checked for overlapping work.");
+  } else if (input.repository.activity?.pullRequestScan === "unavailable") {
+    limitations.push("Open pull requests could not be checked; verify that similar work is not already in progress before contributing.");
+  }
   return {
     repositoryFiles,
     supportedFiles,
@@ -271,6 +418,7 @@ function buildCoverage(input: AuditInput): AnalysisCoverage {
 function buildOpportunities(findings: AuditFinding[]): ContributionOpportunity[] {
   return findings
     .filter((finding) =>
+      finding.contributionReady !== false &&
       finding.confidence !== "low" &&
       (["high", "medium"].includes(finding.severity) || finding.id === "maintainability:possibly-unreferenced"),
     )
@@ -306,6 +454,7 @@ export async function auditRepository(input: AuditInput): Promise<RepositoryAudi
   const packageLoad = await loadPackageManifests(input.repository, input.inventory);
   const packages = packageLoad.manifests;
   const signals = await scanSourceSignals(input.repository, input.inventory);
+  const markdown = await scanMarkdownSignals(input.repository, input.inventory);
   const allScripts = new Set(packages.flatMap((manifest) => Object.keys(manifest.scripts)));
   const coverage = buildCoverage(input);
   const sourceFileCount = input.inventory.files.filter((file) =>
@@ -379,26 +528,50 @@ export async function auditRepository(input: AuditInput): Promise<RepositoryAudi
   }
 
   const missingCommunity = [
-    !contributing ? "contribution guide" : null,
-    !codeOfConduct ? "code of conduct" : null,
-    !security ? "security policy" : null,
-    !issueTemplate ? "issue template" : null,
-    !pullRequestTemplate ? "pull-request template" : null,
-  ].filter((item): item is string => Boolean(item));
+    !contributing ? { label: "contribution guide", patterns: [/\bcontribut(?:e|ing|ion)\b/] } : null,
+    !codeOfConduct ? { label: "code of conduct", patterns: [/\bcode of conduct\b/] } : null,
+    !security ? { label: "security policy", patterns: [/\bsecurity (?:policy|md)\b/] } : null,
+    !issueTemplate ? { label: "issue template", patterns: [/\bissue template\b/] } : null,
+    !pullRequestTemplate ? { label: "pull-request template", patterns: [/\b(?:pull request|pr) template\b/] } : null,
+  ].filter((item): item is { label: string; patterns: RegExp[] } => Boolean(item));
   if (missingCommunity.length > 0) {
+    const overlappingWork = missingCommunity.flatMap((item) => {
+      const pullRequest = findOpenPullRequest(input.repository, item.patterns);
+      return pullRequest ? [{ item: item.label, pullRequest }] : [];
+    });
+    const labels = missingCommunity.map((item) => item.label);
+    const existingWorkSummary = overlappingWork
+      .map(({ item, pullRequest }) => `${item} may already be covered by PR #${pullRequest.number}`)
+      .join("; ");
     findings.push(makeFinding({
       id: "community:missing-contributor-files",
       category: "community",
       severity: "medium",
       confidence: "high",
-      title: `${missingCommunity.length} contributor-support file${missingCommunity.length === 1 ? " is" : "s are"} missing`,
-      summary: `Missing: ${missingCommunity.join(", ")}.`,
+      title: `${labels.length} contributor-support file${labels.length === 1 ? " is" : "s are"} missing`,
+      summary: `Missing: ${labels.join(", ")}.${existingWorkSummary ? ` Existing work detected: ${existingWorkSummary}.` : ""}`,
       whyItMatters: "Consistent contribution and reporting guidance reduces maintainer effort and makes first contributions safer.",
-      recommendation: "Add the missing community health files, starting with CONTRIBUTING.md and repository templates.",
-      evidence: missingCommunity.map((item) => missingEvidence(item, "the repository root and .github directory")),
+      recommendation: overlappingWork.length > 0
+        ? "Review the linked pull request before proposing overlapping files, then ask the maintainer which remaining contributor guidance they want."
+        : "Add the missing community health files, starting with CONTRIBUTING.md and repository templates.",
+      evidence: [
+        ...labels.map((item) => missingEvidence(item, "the repository root and .github directory")),
+        ...overlappingWork.map(({ item, pullRequest }) => ({
+          label: `Existing work for ${item}`,
+          value: `PR #${pullRequest.number}: ${pullRequest.title}`,
+          status: "present" as const,
+          url: pullRequest.url,
+        })),
+      ],
       files: [],
-      difficulty: "quick-win",
-      contributionTask: `Add the missing repository community files: ${missingCommunity.join(", ")}. Keep each document specific to this project rather than using unexplained boilerplate.`,
+      difficulty: labels.length >= 3 ? "moderate" : "quick-win",
+      contributionReady: overlappingWork.length === 0,
+      contributionTask: overlappingWork.length > 0
+        ? `Do not duplicate ${existingWorkSummary}. Review the linked pull request and confirm with the maintainer which of these remaining files are wanted: ${labels.join(", ")}.`
+        : `Add the missing repository community files: ${labels.join(", ")}. Keep each document specific to this project rather than using unexplained boilerplate.`,
+      limitation: overlappingWork.length > 0
+        ? "Pull-request title matching identifies likely overlap; inspect the linked diff before deciding that it fully resolves the gap."
+        : undefined,
     }));
   } else {
     strengths.push({
@@ -407,6 +580,136 @@ export async function auditRepository(input: AuditInput): Promise<RepositoryAudi
       title: "Contributor support files are complete",
       evidence: "Contribution guide, conduct and security policies, and issue/PR templates were found.",
     });
+  }
+
+  const contentProject = ["documentation", "catalog"].includes(input.project.projectType);
+  if (contentProject && markdown.uniqueLinks.size >= 25) {
+    const linkCheckPresent = await hasAutomatedLinkCheck(input.repository, input.inventory);
+    if (!linkCheckPresent) {
+      findings.push(makeFinding({
+        id: "documentation:missing-link-check",
+        category: "documentation-quality",
+        severity: "medium",
+        confidence: "high",
+        title: `${markdown.uniqueLinks.size} external documentation links are not automatically checked`,
+        summary: "The repository contains a large external-link catalog, but no recognized link-checking workflow was found.",
+        whyItMatters: "Curated catalogs lose value when destinations move, become archived, or stop responding; manual checking does not scale with hundreds of links.",
+        recommendation: "Add a pull-request workflow that checks Markdown links with retries, timeouts, and a small documented allowlist for intentionally unavailable sites.",
+        evidence: [
+          {
+            label: "External link inventory",
+            value: `${markdown.links.length} link occurrences across ${markdown.documents.length} Markdown files (${markdown.uniqueLinks.size} unique).`,
+            status: "signal",
+            location: readme ? { file: readme, lineStart: 1 } : undefined,
+          },
+          missingEvidence("Automated link checker", ".github/workflows for lychee, markdown-link-check, linkspector, linkinator, or an equivalent link-check step"),
+        ],
+        files: markdown.documents.map((document) => document.file),
+        difficulty: "moderate",
+        contributionTask: "Add a GitHub Actions workflow that checks Markdown links on pull requests. Configure sensible retries and timeouts, document any allowlisted URLs, and make the job report the exact file and broken destination.",
+        limitation: "RepoLens confirms the absence of a recognized repository workflow; it does not claim that every external URL is currently broken.",
+      }));
+    } else {
+      strengths.push({
+        id: "documentation:link-check",
+        category: "documentation-quality",
+        title: "Documentation links have an automated checker",
+        evidence: "A recognized link-checking step was found in .github/workflows.",
+      });
+    }
+  }
+
+  if (contentProject && markdown.insecureLinks.length > 0) {
+    const existingPullRequest = findOpenPullRequest(input.repository, [
+      /\bhttp\b.*\bhttps\b/,
+      /\bhttps\b.*\bhttp\b/,
+      /\b(?:insecure|broken|dead) links?\b/,
+    ]);
+    findings.push(makeFinding({
+      id: "documentation:non-https-links",
+      category: "documentation-quality",
+      severity: "medium",
+      confidence: "high",
+      title: `${markdown.insecureLinks.length} documentation link${markdown.insecureLinks.length === 1 ? " uses" : "s use"} HTTP instead of HTTPS`,
+      summary: existingPullRequest
+        ? `Non-HTTPS destinations remain on the default branch, but PR #${existingPullRequest.number} appears to address the same work.`
+        : "Non-HTTPS destinations were found in the checked Markdown files.",
+      whyItMatters: "Plain HTTP links can redirect unpredictably, expose readers to interception, or fail when a destination now requires HTTPS.",
+      recommendation: existingPullRequest
+        ? "Review the existing pull request instead of opening a duplicate, and verify that each replacement destination actually supports HTTPS."
+        : "Verify each destination over HTTPS and update only links that resolve correctly; do not perform a blind text replacement.",
+      evidence: [
+        ...markdown.insecureLinks.slice(0, 8).map((link) => sourceEvidence(
+          "Non-HTTPS link",
+          link.url,
+          link.file,
+          link.line,
+        )),
+        ...(existingPullRequest ? [{
+          label: "Similar pull request is already open",
+          value: `PR #${existingPullRequest.number}: ${existingPullRequest.title}`,
+          status: "present" as const,
+          url: existingPullRequest.url,
+        }] : []),
+      ],
+      files: [...new Set(markdown.insecureLinks.map((link) => link.file))],
+      difficulty: "moderate",
+      contributionReady: !existingPullRequest,
+      contributionTask: existingPullRequest
+        ? `Review PR #${existingPullRequest.number} (${existingPullRequest.title}) and avoid opening overlapping HTTP-to-HTTPS cleanup work.`
+        : "Audit the named HTTP links one by one, confirm the HTTPS destination responds with the intended content, and update the Markdown without changing unrelated URLs.",
+      limitation: "An HTTP URL is a maintenance risk, not proof that the destination is dead. Each suggested HTTPS replacement must be verified.",
+    }));
+  }
+
+  if (contentProject) {
+    const translationDrift = translationDriftEvidence(markdown);
+    if (translationDrift) {
+      findings.push(makeFinding({
+        id: "documentation:translation-drift",
+        category: "documentation-quality",
+        severity: "medium",
+        confidence: "medium",
+        title: `${translationDrift.files.length - 1} README variant${translationDrift.files.length === 2 ? " differs" : "s differ"} from the main catalog`,
+        summary: "Large differences in linked projects were found between the main README and translated or alternate README files.",
+        whyItMatters: "Readers of different language versions may receive an older or materially different project catalog without any indication that it is out of sync.",
+        recommendation: "Compare the named README variants section by section, synchronize missing catalog entries, and document any intentional language-specific differences.",
+        evidence: translationDrift.evidence,
+        files: translationDrift.files,
+        difficulty: "substantial",
+        contributionTask: `Compare ${translationDrift.files.join(", ")} section by section. Synchronize missing or outdated project entries while preserving the existing translations, and note any intentionally different content in the pull request.`,
+        limitation: "Different link sets strongly indicate content drift, but some language-specific differences may be intentional and require maintainer confirmation.",
+      }));
+    }
+  }
+
+  const openPullRequests = input.repository.activity?.openPullRequests ?? [];
+  if (openPullRequests.length >= 10) {
+    const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1_000;
+    const stalePullRequests = openPullRequests.filter((pullRequest) => {
+      const createdAt = Date.parse(pullRequest.createdAt);
+      return Number.isFinite(createdAt) && createdAt < oneYearAgo;
+    });
+    findings.push(makeFinding({
+      id: "community:open-pull-request-backlog",
+      category: "community",
+      severity: "info",
+      confidence: "high",
+      title: `${openPullRequests.length}${input.repository.activity?.pullRequestScan === "partial" ? "+" : ""} open pull requests should be checked before starting duplicate work`,
+      summary: `${stalePullRequests.length} fetched pull request${stalePullRequests.length === 1 ? " has" : "s have"} been open for more than a year.`,
+      whyItMatters: "A repository can already contain the exact fix a contributor is considering, especially when review has accumulated over several years.",
+      recommendation: "Search and review open pull requests by topic and affected file before choosing a contribution.",
+      evidence: openPullRequests.slice(0, 5).map((pullRequest) => ({
+        label: `Open PR #${pullRequest.number}`,
+        value: pullRequest.title,
+        status: "present" as const,
+        url: pullRequest.url,
+      })),
+      files: [],
+      difficulty: "quick-win",
+      contributionReady: false,
+      contributionTask: "Review the repository's open pull requests for overlapping work before starting a new change; coordinate with maintainers rather than opening a duplicate.",
+    }));
   }
 
   const readmeSource = readme ? await readWorkspaceText(input.repository, readme) : null;
@@ -727,10 +1030,12 @@ export async function auditRepository(input: AuditInput): Promise<RepositoryAudi
     severityOrder[a.severity] - severityOrder[b.severity] || a.title.localeCompare(b.title),
   );
 
-  const applicableCategories: AuditCategory[] = [
-    "community", "developer-experience", "testing", "maintainability",
-    ...(input.interfaceReport.hasVisualInterface ? ["frontend-quality" as const] : []),
-  ];
+  const applicableCategories: AuditCategory[] = contentProject
+    ? ["community", "documentation-quality", "maintainability"]
+    : [
+        "community", "developer-experience", "testing", "maintainability",
+        ...(input.interfaceReport.hasVisualInterface ? ["frontend-quality" as const] : []),
+      ];
   const categoryScores = applicableCategories.map((category) => {
     const categoryFindings = findings.filter((finding) => finding.category === category);
     return {
@@ -747,14 +1052,21 @@ export async function auditRepository(input: AuditInput): Promise<RepositoryAudi
   // A simple category average must not describe a repository as strong while
   // high-priority gaps are still open. The cap is visible through those exact
   // findings, so the score remains explainable rather than mysterious.
-  const score = highCount >= 2 ? Math.min(rawScore, 69) : highCount === 1 ? Math.min(rawScore, 79) : rawScore;
+  const priorityCappedScore = highCount >= 2
+    ? Math.min(rawScore, 69)
+    : highCount === 1
+      ? Math.min(rawScore, 79)
+      : rawScore;
+  const score = input.files.length === 0 && !contentProject
+    ? Math.min(priorityCappedScore, 55)
+    : priorityCappedScore;
   const status = statusForScore(score);
   const headline = highCount > 0
     ? `${highCount} high-priority gap${highCount === 1 ? " needs" : "s need"} attention`
     : actionableCount > 0
       ? `${actionableCount} actionable improvement${actionableCount === 1 ? " was" : "s were"} found`
       : "No actionable gaps were found by the current checks";
-  const summary = `${coverage.coveragePercent}% of supported files were fetched. ${findings.length} finding${findings.length === 1 ? "" : "s"} and ${strengths.length} verified strength${strengths.length === 1 ? "" : "s"} were produced from repository evidence.`;
+  const summary = `${coverage.coveragePercent}% of supported files were fetched. ${contentProject ? "Documentation-specific" : "Repository"} checks produced ${findings.length} finding${findings.length === 1 ? "" : "s"} and ${strengths.length} verified strength${strengths.length === 1 ? "" : "s"}.`;
 
   return {
     score,

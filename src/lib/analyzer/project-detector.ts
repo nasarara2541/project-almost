@@ -10,6 +10,11 @@ import type { AnalysisRepository } from "./repository-analyzer";
 
 const IGNORED_DIRECTORIES = new Set(["node_modules", ".git", ".next", "dist", "build", "coverage"]);
 const MAX_PACKAGE_FILES = 100;
+const MAX_CONTENT_SHAPE_FILES = 2_000;
+const CODE_EXTENSIONS = new Set([
+  ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".py", ".go", ".rs", ".rb",
+  ".php", ".java", ".kt", ".swift", ".c", ".h", ".cpp", ".cc", ".cs",
+]);
 
 type PackageJson = {
   name?: unknown;
@@ -99,6 +104,40 @@ async function findPackageFiles(root: string): Promise<string[]> {
   }
   await visit(root);
   return files.sort();
+}
+
+async function detectContentProject(root: string): Promise<"documentation" | "catalog" | null> {
+  let repositoryFiles = 0;
+  let markdownFiles = 0;
+  let sourceFiles = 0;
+  let externalLinks = 0;
+  let markdownBytesRead = 0;
+
+  async function visit(directory: string): Promise<void> {
+    for (const entry of await readdir(/* turbopackIgnore: true */ directory, { withFileTypes: true })) {
+      if (IGNORED_DIRECTORIES.has(entry.name) || repositoryFiles >= MAX_CONTENT_SHAPE_FILES) continue;
+      const absolutePath = path.join(/* turbopackIgnore: true */ directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(absolutePath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      repositoryFiles += 1;
+      const extension = path.extname(entry.name).toLowerCase();
+      if (CODE_EXTENSIONS.has(extension)) sourceFiles += 1;
+      if (![".md", ".mdx"].includes(extension)) continue;
+      markdownFiles += 1;
+      if (markdownBytesRead >= 5 * 1024 * 1024) continue;
+      const source = await readFile(/* turbopackIgnore: true */ absolutePath, "utf8").catch(() => "");
+      markdownBytesRead += Buffer.byteLength(source);
+      externalLinks += source.match(/https?:\/\/[^\s)<>"']+/g)?.length ?? 0;
+    }
+  }
+
+  await visit(root);
+  if (sourceFiles > 0 || markdownFiles === 0) return null;
+  const markdownShare = repositoryFiles > 0 ? markdownFiles / repositoryFiles : 0;
+  return externalLinks >= 25 && markdownShare >= 0.5 ? "catalog" : "documentation";
 }
 
 function dependencyNames(manifest: PackageJson): Set<string> {
@@ -267,6 +306,9 @@ export async function detectRepositoryProject(
   const frameworkSet = allFrameworks;
   const single = subprojects.length === 1 ? subprojects[0] : null;
   const backendManifest = await detectBackendProject(repository.sourcePath);
+  const contentProject = packageFiles.length === 0 && !backendManifest
+    ? await detectContentProject(repository.sourcePath)
+    : null;
   const projectType: RepositoryProjectInfo["projectType"] = monorepo
     ? "monorepo"
     : single?.framework === "chrome-extension" || (frameworkSet.has("chrome-extension") && subprojects.length <= 1)
@@ -285,9 +327,11 @@ export async function detectRepositoryProject(
               ? "python"
               : backendManifest
                 ? "backend"
-                : packageFiles.length > 0
-                  ? "library"
-                  : "unknown";
+                : contentProject
+                  ? contentProject
+                  : packageFiles.length > 0
+                    ? "library"
+                    : "unknown";
 
   return {
     projectType,

@@ -6,7 +6,8 @@ function findingMarkdown(finding: AuditFinding): string {
       const location = item.location
         ? ` — \`${item.location.file}${item.location.lineStart ? `:${item.location.lineStart}` : ""}\``
         : "";
-      return `- **${item.label}:** ${item.value}${location}`;
+      const link = item.url ? ` — [Open on GitHub](${item.url})` : "";
+      return `- **${item.label}:** ${item.value}${location}${link}`;
     })
     .join("\n");
   const files = finding.files.length

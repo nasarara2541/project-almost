@@ -7,6 +7,7 @@ import type { AnalyzeResult, AuditCategory, AuditSeverity } from "@/types/api";
 const categoryLabels: Record<AuditCategory, string> = {
   community: "Community",
   "developer-experience": "Developer experience",
+  "documentation-quality": "Documentation quality",
   testing: "Testing & CI",
   maintainability: "Maintainability",
   "frontend-quality": "Frontend quality",
@@ -16,7 +17,7 @@ const severityLabels: Record<AuditSeverity, string> = {
   high: "High priority",
   medium: "Medium priority",
   low: "Low priority",
-  info: "Coverage note",
+  info: "Context",
 };
 
 function githubFileUrl(repoUrl: string, branch: string | undefined, file: string, line?: number): string {
@@ -121,7 +122,9 @@ export function AuditFindings({ analysis }: { analysis: AnalyzeResult }) {
                             <div>
                               <strong>{item.label}</strong>
                               <span>{item.value}</span>
-                              {item.location && linksToGitHub ? (
+                              {item.url ? (
+                                <a href={item.url} target="_blank" rel="noreferrer">Open on GitHub ↗</a>
+                              ) : item.location && linksToGitHub ? (
                                 <a href={githubFileUrl(analysis.repoUrl, analysis.project.defaultBranch, item.location.file, item.location.lineStart)} target="_blank" rel="noreferrer">
                                   {item.location.file}{item.location.lineStart ? `:${item.location.lineStart}` : ""} ↗
                                 </a>
@@ -145,10 +148,16 @@ export function AuditFindings({ analysis }: { analysis: AnalyzeResult }) {
 
                     {finding.limitation ? <p className="finding-limitation"><strong>Reliability note:</strong> {finding.limitation}</p> : null}
 
-                    <div className="contribution-task">
-                      <div><strong>Ready-to-copy task</strong><p>{finding.contributionTask}</p></div>
-                      <CopyButton value={finding.contributionTask} label="Contribution task" />
-                    </div>
+                    {finding.contributionReady === false ? (
+                      <div className="contribution-task">
+                        <div><strong>Check existing work first</strong><p>{finding.contributionTask}</p></div>
+                      </div>
+                    ) : (
+                      <div className="contribution-task">
+                        <div><strong>Ready-to-copy task</strong><p>{finding.contributionTask}</p></div>
+                        <CopyButton value={finding.contributionTask} label="Contribution task" />
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </article>

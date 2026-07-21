@@ -6,6 +6,7 @@ import type { AnalyzeResult, AuditCategory } from "@/types/api";
 const categoryLabels: Record<AuditCategory, string> = {
   community: "Community",
   "developer-experience": "Developer experience",
+  "documentation-quality": "Documentation quality",
   testing: "Testing & CI",
   maintainability: "Maintainability",
   "frontend-quality": "Frontend quality",
@@ -76,7 +77,7 @@ export function AuditOverview({ analysis, onViewGaps }: AuditOverviewProps) {
           <div><strong>{highPriority}</strong><span>Fix first</span></div>
           <div><strong>{actionable.length}</strong><span>Total issues</span></div>
           <div><strong>{audit.opportunities.length}</strong><span>Ready-to-use tasks</span></div>
-          <div><strong>{audit.coverage.coveragePercent}%</strong><span>Files checked</span></div>
+          <div><strong>{audit.coverage.coveragePercent}%</strong><span>Supported files fetched</span></div>
         </div>
       </div>
 

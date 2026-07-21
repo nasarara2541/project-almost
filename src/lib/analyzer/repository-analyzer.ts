@@ -24,6 +24,20 @@ const MAX_SINGLE_FILE_BYTES = 512 * 1024;
 export type AnalysisRepository = {
   repoUrl: string;
   sourcePath: string;
+  activity?: {
+    archived: boolean;
+    pushedAt?: string;
+    openIssueCount?: number;
+    openPullRequests: {
+      number: number;
+      title: string;
+      url: string;
+      createdAt: string;
+      updatedAt: string;
+      draft: boolean;
+    }[];
+    pullRequestScan: "complete" | "partial" | "unavailable" | "not-needed";
+  };
   acquisition?: {
     repositoryFiles: number;
     supportedFiles: number;

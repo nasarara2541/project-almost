@@ -106,6 +106,9 @@ type GitHubRepositoryResponse = {
   default_branch?: string;
   description?: string | null;
   full_name?: string;
+  archived?: boolean;
+  pushed_at?: string;
+  open_issues_count?: number;
 };
 
 type GitHubBranchResponse = { commit?: { sha?: string } };
@@ -127,6 +130,15 @@ type GitHubBlobResponse = {
   content?: string;
   encoding?: string;
   size?: number;
+};
+
+type GitHubPullRequestResponse = {
+  number?: number;
+  title?: string;
+  html_url?: string;
+  created_at?: string;
+  updated_at?: string;
+  draft?: boolean;
 };
 
 export type RemoteRepositoryErrorCode =
@@ -273,6 +285,44 @@ function encodePath(filePath: string): string {
   return filePath.split("/").map(encodeURIComponent).join("/");
 }
 
+async function fetchOpenPullRequestContext(
+  apiBase: string,
+  fetcher: typeof fetch,
+  accessToken?: string,
+  privateRepository = false,
+): Promise<Pick<NonNullable<AnalysisRepository["activity"]>, "openPullRequests" | "pullRequestScan">> {
+  try {
+    const url = `${apiBase}/pulls?state=open&sort=updated&direction=desc&per_page=100`;
+    const requestPulls = (token?: string) => fetcher(url, {
+      headers: apiHeaders(token),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    let response = await requestPulls(accessToken);
+    if (!response.ok && accessToken && !privateRepository) response = await requestPulls();
+    if (!response.ok) return { openPullRequests: [], pullRequestScan: "unavailable" };
+    const payload = await response.json() as unknown;
+    if (!Array.isArray(payload)) return { openPullRequests: [], pullRequestScan: "unavailable" };
+    const openPullRequests = (payload as GitHubPullRequestResponse[])
+      .filter((item): item is GitHubPullRequestResponse & { number: number; title: string; html_url: string } =>
+        typeof item.number === "number" && typeof item.title === "string" && typeof item.html_url === "string",
+      )
+      .map((item) => ({
+        number: item.number,
+        title: item.title,
+        url: item.html_url,
+        createdAt: item.created_at ?? "",
+        updatedAt: item.updated_at ?? "",
+        draft: Boolean(item.draft),
+      }));
+    return {
+      openPullRequests,
+      pullRequestScan: response.headers.get("link")?.includes('rel="next"') ? "partial" : "complete",
+    };
+  } catch {
+    return { openPullRequests: [], pullRequestScan: "unavailable" };
+  }
+}
+
 export async function fetchPublicGitHubRepository(
   repoUrl: string,
   fetcher: typeof fetch = fetch,
@@ -288,6 +338,14 @@ export async function fetchPublicGitHubRepository(
   if (!metadata.default_branch) {
     throw new RemoteRepositoryError("The repository has no readable default branch.", "FETCH_FAILED");
   }
+
+  const pullRequestContext = commitShaOverride || metadata.archived
+    ? { openPullRequests: [], pullRequestScan: "not-needed" as const }
+    : metadata.open_issues_count === 0
+      ? { openPullRequests: [], pullRequestScan: "complete" as const }
+      : typeof metadata.open_issues_count === "number"
+        ? await fetchOpenPullRequestContext(apiBase, fetcher, accessToken, Boolean(metadata.private))
+        : { openPullRequests: [], pullRequestScan: "unavailable" as const };
 
   const branch = commitShaOverride ? null : await githubJson<GitHubBranchResponse>(
     `${apiBase}/branches/${encodeURIComponent(metadata.default_branch)}`,
@@ -411,6 +469,12 @@ export async function fetchPublicGitHubRepository(
       repository: {
         repoUrl: normalized,
         sourcePath: workspace,
+        activity: {
+          archived: Boolean(metadata.archived),
+          pushedAt: metadata.pushed_at,
+          openIssueCount: metadata.open_issues_count,
+          ...pullRequestContext,
+        },
         acquisition: {
           repositoryFiles,
           supportedFiles: supportedFiles.length,

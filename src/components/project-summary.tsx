@@ -8,6 +8,8 @@ const projectTypeLabels: Record<RepositoryProjectInfo["projectType"], string> = 
   "chrome-extension": "Chrome extension",
   python: "Python project",
   backend: "Backend service",
+  documentation: "Documentation repository",
+  catalog: "Curated resource catalog",
   mixed: "Mixed project",
   unknown: "Unclassified",
 };
@@ -45,7 +47,7 @@ export function ProjectSummary({ analysis }: ProjectSummaryProps) {
         <div><dt>Project type</dt><dd>{projectTypeLabels[project.projectType]}</dd></div>
         <div><dt>Detected stack</dt><dd>{project.frameworks.map((framework) => frameworkLabels[framework] ?? framework).join(", ") || "None detected"}</dd></div>
         <div><dt>Package managers</dt><dd>{project.packageManagers.join(", ") || "Unknown"}</dd></div>
-        <div><dt>Repository shape</dt><dd>{project.monorepo ? `Monorepo · ${project.subprojects.length} packages` : "Single project"}</dd></div>
+        <div><dt>Repository shape</dt><dd>{project.monorepo ? `Monorepo · ${project.subprojects.length} packages` : ["documentation", "catalog"].includes(project.projectType) ? "Content repository" : "Single project"}</dd></div>
         {project.defaultBranch ? <div><dt>Default branch</dt><dd>{project.defaultBranch}</dd></div> : null}
         <div><dt>Styling</dt><dd>{analysis.interface.tailwind ? "Tailwind CSS" : analysis.interface.styleFiles.length ? "CSS stylesheets" : "None detected"}</dd></div>
       </dl>

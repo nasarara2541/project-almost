@@ -39,6 +39,61 @@ const healthyCommunityFiles = {
 };
 
 describe("repository audit", () => {
+  it("produces catalog-specific work and avoids duplicating open pull requests", async () => {
+    const mainLinks = Array.from(
+      { length: 35 },
+      (_, index) => `- [Project ${index}](${index === 0 ? "http" : "https"}://github.com/example/project-${index})`,
+    ).join("\n");
+    const translatedLinks = Array.from(
+      { length: 12 },
+      (_, index) => `- [Project ${index}](https://github.com/example/project-${index})`,
+    ).join("\n");
+    const repository = await fixture({
+      "README.md": `# Android catalog\n\n${mainLinks}\n`,
+      "translations/README.md": `# Android catalog translation\n\n${translatedLinks}\n`,
+      LICENSE: "Apache License 2.0",
+    });
+    repository.activity = {
+      archived: false,
+      pushedAt: "2026-03-25T01:04:16Z",
+      openIssueCount: 20,
+      pullRequestScan: "complete",
+      openPullRequests: [
+        { number: 441, title: "fix: upgrade http:// to https:// in README", url: "https://github.com/example/catalog/pull/441", createdAt: "2026-07-18T00:00:00Z", updatedAt: "2026-07-18T00:00:00Z", draft: false },
+        { number: 383, title: "Create CODE_OF_CONDUCT.md", url: "https://github.com/example/catalog/pull/383", createdAt: "2020-07-27T00:00:00Z", updatedAt: "2020-07-27T00:00:00Z", draft: false },
+        ...Array.from({ length: 8 }, (_, index) => ({
+          number: 300 + index,
+          title: `Update catalog entry ${index}`,
+          url: `https://github.com/example/catalog/pull/${300 + index}`,
+          createdAt: "2019-01-01T00:00:00Z",
+          updatedAt: "2019-01-01T00:00:00Z",
+          draft: false,
+        })),
+      ],
+    };
+
+    const result = await analyze(repository);
+
+    expect(result.project.projectType).toBe("catalog");
+    expect(result.audit.findings.map((finding) => finding.id)).toEqual(expect.arrayContaining([
+      "documentation:missing-link-check",
+      "documentation:non-https-links",
+      "documentation:translation-drift",
+      "community:open-pull-request-backlog",
+    ]));
+    expect(result.audit.findings.find((finding) => finding.id === "documentation:non-https-links"))
+      .toMatchObject({ contributionReady: false });
+    expect(result.audit.findings.find((finding) => finding.id === "community:missing-contributor-files"))
+      .toMatchObject({ contributionReady: false });
+    expect(result.audit.opportunities.map((item) => item.findingId)).toContain("documentation:missing-link-check");
+    expect(result.audit.opportunities.map((item) => item.findingId)).not.toContain("documentation:non-https-links");
+    expect(result.audit.categoryScores.map((category) => category.category)).toEqual([
+      "community", "documentation-quality", "maintainability",
+    ]);
+    expect(result.audit.score).toBeLessThan(95);
+    expect(result.audit.coverage.limitations.join(" ")).toMatch(/content rather than application source/i);
+  });
+
   it("recognizes a well-documented project with tests and CI", async () => {
     const repository = await fixture({
       ...healthyCommunityFiles,

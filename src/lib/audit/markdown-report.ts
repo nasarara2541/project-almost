@@ -1,12 +1,4 @@
-import type { AnalyzeResult, AuditCategory, AuditFinding } from "../../types/api";
-
-const categoryLabels: Record<AuditCategory, string> = {
-  community: "Community readiness",
-  "developer-experience": "Developer experience",
-  testing: "Testing and automation",
-  maintainability: "Maintainability",
-  "frontend-quality": "Frontend quality",
-};
+import type { AnalyzeResult, AuditFinding } from "../../types/api";
 
 function findingMarkdown(finding: AuditFinding): string {
   const evidence = finding.evidence
@@ -43,9 +35,6 @@ ${evidence}
 
 export function createAuditMarkdown(analysis: AnalyzeResult): string {
   const { audit } = analysis;
-  const categoryScores = audit.categoryScores
-    .map((item) => `- ${categoryLabels[item.category]}: **${item.score}/100** (${item.findingCount} findings)`)
-    .join("\n");
   const findings = audit.findings.length
     ? audit.findings.map(findingMarkdown).join("\n\n")
     : "No actionable findings were produced by the current audit rules.";
@@ -66,15 +55,11 @@ Generated: ${audit.generatedAt}
 
 ## Start here
 
-**Readiness:** ${audit.status.replaceAll("-", " ")}<br>
-**Score:** ${audit.score}/100<br>
-**Summary:** ${audit.headline}
+**Actionable findings:** ${audit.findings.filter((finding) => finding.severity !== "info").length}<br>
+**Contribution opportunities:** ${audit.opportunities.length}<br>
+**Supported-file coverage:** ${audit.coverage.coveragePercent}%
 
 ${audit.summary}
-
-## Category scores
-
-${categoryScores}
 
 ## Analysis coverage
 

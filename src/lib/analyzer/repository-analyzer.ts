@@ -499,6 +499,7 @@ export async function analyzeRepository(
     analysisId: sessionId,
     sessionId,
     repoUrl: repository.repoUrl,
+    repositoryVisibility: "public",
     name: repository.repoUrl.split("/").filter(Boolean).at(-1) ?? repository.repoUrl,
     routes: [...new Set(routes.map((route) => route.route))],
     elements,

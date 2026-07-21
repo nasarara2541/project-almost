@@ -2,7 +2,6 @@
 
 export type SectionId =
   | "top"
-  | "start-here"
   | "gaps"
   | "opportunities"
   | "repository-explorer"
@@ -12,10 +11,9 @@ type Section = { id: SectionId; label: string };
 
 const SECTIONS: Section[] = [
   { id: "top", label: "Home" },
-  { id: "start-here", label: "Summary" },
-  { id: "gaps", label: "Issues" },
-  { id: "opportunities", label: "Tasks" },
-  { id: "repository-explorer", label: "Files" },
+  { id: "opportunities", label: "Best matches" },
+  { id: "gaps", label: "All findings" },
+  { id: "repository-explorer", label: "Code map" },
   { id: "interface", label: "UI map" },
 ];
 

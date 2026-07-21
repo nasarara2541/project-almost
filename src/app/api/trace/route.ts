@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { analysisSessionManager } from "@/lib/analyzer/analysis-session-manager";
-import { RemoteRepositoryError } from "@/lib/analyzer/github-source";
+import { isRemoteRepositoryError } from "@/lib/analyzer/github-source";
 import { RepositoryValidationError } from "@/lib/preview/repositories";
 import { ModelConfigurationError, TraceModelError } from "@/lib/trace/openai-trace";
 import { traceRepositoryFeature } from "@/lib/trace/trace-repository";
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     if (error instanceof RepositoryValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    if (error instanceof RemoteRepositoryError) {
+    if (isRemoteRepositoryError(error)) {
       const status = error.code === "NOT_FOUND" ? 404 : error.code === "RATE_LIMITED" ? 429 : 422;
       return NextResponse.json({ error: error.message, code: error.code }, { status });
     }

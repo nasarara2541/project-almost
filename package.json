@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "build:fixture": "vite build fixtures/sample-repo --config fixtures/sample-repo/vite.config.ts",
@@ -11,10 +11,16 @@
     "health": "vitest run tests/health/health-check.test.ts --reporter=verbose"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.4",
     "@xyflow/react": "^12.11.2",
     "next": "16.2.10",
     "react": "19.2.0",
     "react-dom": "19.2.0"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.10"
+    }
   },
   "devDependencies": {
     "@types/node": "^22",

@@ -33,13 +33,16 @@ export class AnalysisSessionManager {
     this.ttlMs = ttlMs;
   }
 
-  async create(repoUrl: string): Promise<AnalyzeResult> {
+  async create(repoUrl: string, options: { accessToken?: string; commitSha?: string } = {}): Promise<AnalyzeResult> {
     const analysisId = randomUUID();
-    const verifiedRepository = findAllowedRepository(repoUrl);
+    // Exact-commit verification must never substitute a bundled demo fixture
+    // for the real GitHub commit being verified.
+    const verifiedRepository = options.commitSha ? null : findAllowedRepository(repoUrl);
     let repository: AnalysisRepository;
     let cleanup: () => Promise<void> = async () => undefined;
     let defaultBranch: string | undefined;
     let description: string | undefined;
+    let repositoryVisibility: AnalyzeResult["repositoryVisibility"] = "public";
 
     if (verifiedRepository) {
       repository = {
@@ -47,11 +50,17 @@ export class AnalysisSessionManager {
         sourcePath: verifiedRepository.sourcePath,
       };
     } else {
-      const fetched = await fetchPublicGitHubRepository(repoUrl);
+      const fetched = await fetchPublicGitHubRepository(
+        repoUrl,
+        fetch,
+        options.accessToken,
+        options.commitSha,
+      );
       repository = fetched.repository;
       cleanup = fetched.cleanup;
       defaultBranch = fetched.defaultBranch;
       description = fetched.description;
+      repositoryVisibility = fetched.private ? "private" : "public";
     }
 
     try {
@@ -63,6 +72,7 @@ export class AnalysisSessionManager {
         description,
       });
       const result = await analyzeRepository(repository, analysisId, project);
+      result.repositoryVisibility = repositoryVisibility;
       const timer = setTimeout(() => void this.delete(analysisId), this.ttlMs);
       if (typeof timer === "object" && "unref" in timer) timer.unref();
       this.records.set(analysisId, {

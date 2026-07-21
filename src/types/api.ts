@@ -185,6 +185,107 @@ export type AuditSeverity = "high" | "medium" | "low" | "info";
 export type AuditConfidence = "high" | "medium" | "low";
 export type ContributionDifficulty = "quick-win" | "moderate" | "substantial";
 
+export type ContributorExperience = "new" | "comfortable" | "advanced";
+export type ContributionTime = "half-hour" | "two-hours" | "weekend";
+export type ContributionFocus = "any" | "docs" | "tests" | "cleanup" | "frontend";
+
+export type ContributorProfile = {
+  experience: ContributorExperience;
+  time: ContributionTime;
+  focus: ContributionFocus;
+};
+
+export type FeedbackVerdict = "useful" | "started" | "completed" | "inaccurate" | "not-relevant";
+
+export type AnalysisComparison = {
+  previousAnalysisId: string;
+  currentAnalysisId: string;
+  added: { id: string; title: string }[];
+  resolved: { id: string; title: string }[];
+  unchangedCount: number;
+};
+
+export type SessionUser = {
+  id: string;
+  githubId: number;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+};
+
+export type SavedAnalysisSummary = {
+  id: string;
+  repoUrl: string;
+  name: string;
+  isPrivate: boolean;
+  createdAt: string;
+  parentId: string | null;
+  findingCount: number;
+  opportunityCount: number;
+  coveragePercent: number;
+};
+
+export type GithubRepositoryOption = {
+  name: string;
+  url: string;
+  private: boolean;
+  updatedAt: string;
+};
+
+export type ContributionFeedbackRecord = {
+  findingId: string;
+  verdict: FeedbackVerdict;
+  note: string | null;
+  updatedAt: string;
+};
+
+export type ContributionVerificationStatus =
+  | "suggested"
+  | "started"
+  | "implemented"
+  | "verified"
+  | "approved"
+  | "accepted"
+  | "needs-work";
+
+export type ContributionCheckState = "passing" | "failing" | "pending" | "not-found";
+
+export type ContributionVerification = {
+  id: string;
+  analysisId: string;
+  findingId: string;
+  pullRequestUrl: string;
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  status: ContributionVerificationStatus;
+  title: string;
+  author: string;
+  headSha: string;
+  changedFiles: string[];
+  relevantFiles: string[];
+  originalFindingResolved: boolean;
+  analysisComplete: boolean;
+  newHighFindings: { id: string; title: string }[];
+  checks: {
+    state: ContributionCheckState;
+    total: number;
+    passed: number;
+    failed: number;
+    pending: number;
+  };
+  review: {
+    approved: boolean;
+    changesRequested: boolean;
+    approvers: string[];
+  };
+  merged: boolean;
+  limitations: string[];
+  needsRefresh: boolean;
+  createdAt: string;
+  lastVerifiedAt: string;
+};
+
 export type AuditEvidence = {
   label: string;
   value: string;
@@ -266,6 +367,7 @@ export type AnalyzeResult = {
   analysisId: string;
   sessionId: string;
   repoUrl: string;
+  repositoryVisibility: "public" | "private";
   /** Repository name derived from the normalized URL. */
   name: string;
   routes: string[];

@@ -112,6 +112,7 @@ type GitHubBranchResponse = { commit?: { sha?: string } };
 
 type GitHubTreeEntry = {
   path?: string;
+  sha?: string;
   mode?: string;
   type?: string;
   size?: number;
@@ -122,25 +123,56 @@ type GitHubTreeResponse = {
   tree?: GitHubTreeEntry[];
 };
 
+type GitHubBlobResponse = {
+  content?: string;
+  encoding?: string;
+  size?: number;
+};
+
+export type RemoteRepositoryErrorCode =
+  | "NOT_FOUND"
+  | "NOT_PUBLIC"
+  | "NOT_AUTHORIZED"
+  | "RATE_LIMITED"
+  | "EMPTY_REPOSITORY"
+  | "TOO_LARGE"
+  | "FETCH_FAILED";
+
 export class RemoteRepositoryError extends Error {
   constructor(
     message: string,
-    public readonly code:
-      | "NOT_FOUND"
-      | "NOT_PUBLIC"
-      | "RATE_LIMITED"
-      | "TOO_LARGE"
-      | "FETCH_FAILED",
+    public readonly code: RemoteRepositoryErrorCode,
   ) {
     super(message);
     this.name = "RemoteRepositoryError";
   }
 }
 
+const REMOTE_ERROR_CODES = new Set<RemoteRepositoryErrorCode>([
+  "NOT_FOUND",
+  "NOT_PUBLIC",
+  "NOT_AUTHORIZED",
+  "RATE_LIMITED",
+  "EMPTY_REPOSITORY",
+  "TOO_LARGE",
+  "FETCH_FAILED",
+]);
+
+/** Works across Next.js development-module reload boundaries where instanceof can be unreliable. */
+export function isRemoteRepositoryError(error: unknown): error is RemoteRepositoryError {
+  if (error instanceof RemoteRepositoryError) return true;
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { name?: unknown; message?: unknown; code?: unknown };
+  return candidate.name === "RemoteRepositoryError"
+    && typeof candidate.message === "string"
+    && REMOTE_ERROR_CODES.has(candidate.code as RemoteRepositoryErrorCode);
+}
+
 export type FetchedGitHubRepository = {
   repository: AnalysisRepository;
   defaultBranch: string;
   description?: string;
+  private: boolean;
   cleanup: () => Promise<void>;
 };
 
@@ -151,8 +183,8 @@ function repositoryParts(repoUrl: string): { owner: string; repo: string; normal
   return { owner, repo, normalized };
 }
 
-function apiHeaders(): HeadersInit {
-  const token = process.env.GITHUB_TOKEN?.trim();
+function apiHeaders(accessToken?: string): HeadersInit {
+  const token = accessToken?.trim() || process.env.GITHUB_TOKEN?.trim();
   return {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -161,14 +193,31 @@ function apiHeaders(): HeadersInit {
   };
 }
 
-async function githubJson<T>(url: string, fetcher: typeof fetch): Promise<T> {
+async function githubJson<T>(
+  url: string,
+  fetcher: typeof fetch,
+  accessToken?: string,
+  notFound?: { message: string; code: RemoteRepositoryErrorCode },
+): Promise<T> {
   const response = await fetcher(url, {
-    headers: apiHeaders(),
+    headers: apiHeaders(accessToken),
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
     if (response.status === 404) {
-      throw new RemoteRepositoryError("The public GitHub repository was not found.", "NOT_FOUND");
+      if (notFound) throw new RemoteRepositoryError(notFound.message, notFound.code);
+      throw new RemoteRepositoryError(
+        accessToken
+          ? "The repository was not found, or RepoLens is not installed for it."
+          : "The public GitHub repository was not found.",
+        "NOT_FOUND",
+      );
+    }
+    if (response.status === 401 || (response.status === 403 && accessToken && response.headers.get("x-ratelimit-remaining") !== "0")) {
+      throw new RemoteRepositoryError(
+        "RepoLens does not have read access to this repository. Install the GitHub App for the repository and try again.",
+        "NOT_AUTHORIZED",
+      );
     }
     if (response.status === 403 || response.status === 429) {
       throw new RemoteRepositoryError(
@@ -227,26 +276,34 @@ function encodePath(filePath: string): string {
 export async function fetchPublicGitHubRepository(
   repoUrl: string,
   fetcher: typeof fetch = fetch,
+  accessToken?: string,
+  commitShaOverride?: string,
 ): Promise<FetchedGitHubRepository> {
   const { owner, repo, normalized } = repositoryParts(repoUrl);
   const apiBase = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
-  const metadata = await githubJson<GitHubRepositoryResponse>(apiBase, fetcher);
-  if (metadata.private) {
-    throw new RemoteRepositoryError("Only public GitHub repositories can be analyzed.", "NOT_PUBLIC");
+  const metadata = await githubJson<GitHubRepositoryResponse>(apiBase, fetcher, accessToken);
+  if (metadata.private && !accessToken) {
+    throw new RemoteRepositoryError("Connect GitHub to analyze a private repository.", "NOT_AUTHORIZED");
   }
   if (!metadata.default_branch) {
     throw new RemoteRepositoryError("The repository has no readable default branch.", "FETCH_FAILED");
   }
 
-  const branch = await githubJson<GitHubBranchResponse>(
+  const branch = commitShaOverride ? null : await githubJson<GitHubBranchResponse>(
     `${apiBase}/branches/${encodeURIComponent(metadata.default_branch)}`,
     fetcher,
+    accessToken,
+    {
+      message: "This repository has no readable commits yet. Add an initial file such as README.md, commit it on GitHub, then analyze the repository again.",
+      code: "EMPTY_REPOSITORY",
+    },
   );
-  const commitSha = branch.commit?.sha;
+  const commitSha = commitShaOverride?.trim() || branch?.commit?.sha;
   if (!commitSha) throw new RemoteRepositoryError("The default branch commit could not be resolved.", "FETCH_FAILED");
   const tree = await githubJson<GitHubTreeResponse>(
     `${apiBase}/git/trees/${encodeURIComponent(commitSha)}?recursive=1`,
     fetcher,
+    accessToken,
   );
   if (tree.truncated) {
     throw new RemoteRepositoryError(
@@ -284,19 +341,37 @@ export async function fetchPublicGitHubRepository(
     const workers = Array.from({ length: Math.min(8, files.length) }, async () => {
       while (cursor < files.length) {
         const file = files[cursor++];
-        const rawUrl = `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(commitSha)}/${encodePath(file.path)}`;
-        const response = await fetcher(rawUrl, {
-          headers: { "User-Agent": "RepoLens-readonly-analyzer" },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        });
-        if (isBinaryPath(file.path)) {
-          // Binary assets (logos, fonts) are best-effort: a missing image
-          // should not fail the whole analysis or preview.
+        let bytes: Buffer;
+        if (metadata.private) {
+          if (!file.sha) {
+            skippedFiles.push({ path: file.path, size: file.size, reason: "fetch-failed" });
+            continue;
+          }
+          const blob = await githubJson<GitHubBlobResponse>(
+            `${apiBase}/git/blobs/${encodeURIComponent(file.sha)}`,
+            fetcher,
+            accessToken,
+          );
+          if (blob.encoding !== "base64" || typeof blob.content !== "string") {
+            skippedFiles.push({ path: file.path, size: file.size, reason: "fetch-failed" });
+            continue;
+          }
+          bytes = Buffer.from(blob.content.replace(/\s/g, ""), "base64");
+        } else {
+          const rawUrl = `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(commitSha)}/${encodePath(file.path)}`;
+          const response = await fetcher(rawUrl, {
+            headers: { "User-Agent": "RepoLens-readonly-analyzer" },
+            signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+          });
           if (!response.ok) {
             skippedFiles.push({ path: file.path, size: file.size, reason: "fetch-failed" });
             continue;
           }
-          const bytes = Buffer.from(await response.arrayBuffer());
+          bytes = Buffer.from(await response.arrayBuffer());
+        }
+        if (isBinaryPath(file.path)) {
+          // Binary assets (logos, fonts) are best-effort: a missing image
+          // should not fail the whole analysis or preview.
           if (bytes.byteLength > MAX_BINARY_FILE_BYTES) {
             skippedFiles.push({ path: file.path, size: bytes.byteLength, reason: "oversized" });
             continue;
@@ -306,13 +381,9 @@ export async function fetchPublicGitHubRepository(
           await writeFile(/* turbopackIgnore: true */ destination, bytes);
           fetchedFiles += 1;
         } else {
-          if (!response.ok) {
-            skippedFiles.push({ path: file.path, size: file.size, reason: "fetch-failed" });
-            continue;
-          }
           const destination = path.join(/* turbopackIgnore: true */ workspace, ...file.path.split("/"));
           await mkdir(/* turbopackIgnore: true */ path.dirname(destination), { recursive: true });
-          const source = await response.text();
+          const source = bytes.toString("utf8");
           if (Buffer.byteLength(source) > MAX_FILE_BYTES) {
             // GitHub tree metadata can race with raw-content responses when a
             // branch moves. Keep the per-file limit without failing the rest
@@ -349,11 +420,12 @@ export async function fetchPublicGitHubRepository(
       },
       defaultBranch: metadata.default_branch,
       description: metadata.description ?? undefined,
+      private: Boolean(metadata.private),
       cleanup: () => rm(/* turbopackIgnore: true */ workspace, { recursive: true, force: true }),
     };
   } catch (error) {
     await rm(/* turbopackIgnore: true */ workspace, { recursive: true, force: true });
-    if (error instanceof RemoteRepositoryError) throw error;
+    if (isRemoteRepositoryError(error)) throw error;
     throw new RemoteRepositoryError(
       error instanceof Error ? error.message : "Repository source could not be fetched.",
       "FETCH_FAILED",

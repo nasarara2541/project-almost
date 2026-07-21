@@ -48,9 +48,9 @@ export function AuditFindings({ analysis }: { analysis: AnalyzeResult }) {
       <div className="results-section-heading">
         <span className="step-number">02</span>
         <div>
-          <p className="section-label">Prioritized issues</p>
-          <h2 id="audit-findings-heading">Issues to fix</h2>
-          <p>Start with high priority. Each issue shows why it matters and what to do next.</p>
+          <p className="section-label">Repository evidence</p>
+          <h2 id="audit-findings-heading">All findings</h2>
+          <p>Review everything RepoLens detected, including confidence, limitations, and exact source evidence.</p>
         </div>
       </div>
 

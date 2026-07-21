@@ -44,7 +44,7 @@ export function normalizeGitHubRepositoryUrl(input: string): string {
     url = new URL(candidate);
   } catch {
     throw new RepositoryValidationError(
-      "Enter a valid public GitHub repository URL.",
+      "Enter a valid GitHub repository URL.",
       "INVALID_URL",
     );
   }
@@ -57,7 +57,7 @@ export function normalizeGitHubRepositoryUrl(input: string): string {
     url.password
   ) {
     throw new RepositoryValidationError(
-      "Only public github.com repository URLs are supported.",
+      "Only github.com repository URLs are supported.",
       "INVALID_URL",
     );
   }
@@ -86,8 +86,8 @@ export function normalizeGitHubRepositoryUrl(input: string): string {
 
 /**
  * Bundled demo repositories that resolve from local fixtures instead of the
- * GitHub API. This is NOT an allowlist: any supported public repository can
- * be audited. These fixtures keep the demo instant and available offline.
+ * GitHub API. This is NOT an allowlist: any supported repository can be
+ * audited when RepoLens has access. These fixtures keep the demo instant and available offline.
  */
 export function getAllowedRepositories(
   projectRoot = process.cwd(),

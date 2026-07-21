@@ -2,20 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { AuditFindings } from "@/components/audit-findings";
-import { AuditOverview } from "@/components/audit-overview";
 import { ArchitecturePanel } from "@/components/architecture-panel";
 import { ContributionOpportunities } from "@/components/contribution-opportunities";
 import { InterfaceGallery } from "@/components/interface-gallery";
 import { ProjectSummary } from "@/components/project-summary";
 import { RepositoryExplorer } from "@/components/repository-explorer";
 import { RepositoryForm } from "@/components/repository-form";
+import { SavedAnalyses } from "@/components/saved-analyses";
 import { SectionNav, type SectionId } from "@/components/section-nav";
 import { TracePanel } from "@/components/trace-panel";
 import { BUNDLED_FIXTURE_REPO_URL } from "@/lib/preview/constants";
 import { findTraceNodeId } from "@/lib/trace/highlighting";
 import type {
   AnalyzeResult,
+  AnalysisComparison,
   CodeLocation,
+  ContributionFeedbackRecord,
+  ContributorProfile,
+  GithubRepositoryOption,
+  SavedAnalysisSummary,
+  SessionUser,
   TraceErrorCode,
   TraceResult,
 } from "@/types/api";
@@ -23,6 +29,7 @@ import type {
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState(BUNDLED_FIXTURE_REPO_URL);
   const [analysis, setAnalysis] = useState<AnalyzeResult | null>(null);
+  const [analysisLive, setAnalysisLive] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(null);
@@ -32,6 +39,58 @@ export default function Home() {
   const [traceError, setTraceError] = useState<string | null>(null);
   const [traceErrorCode, setTraceErrorCode] = useState<TraceErrorCode | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("top");
+  const [contributorProfile, setContributorProfile] = useState<ContributorProfile>({
+    experience: "new",
+    time: "two-hours",
+    focus: "any",
+  });
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [authConfigured, setAuthConfigured] = useState(true);
+  const [accountLoading, setAccountLoading] = useState(true);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [githubRepositories, setGithubRepositories] = useState<GithubRepositoryOption[]>([]);
+  const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysisSummary[]>([]);
+  const [savedAnalysesLoading, setSavedAnalysesLoading] = useState(false);
+  const [rescanningId, setRescanningId] = useState<string | null>(null);
+  const [comparison, setComparison] = useState<AnalysisComparison | null>(null);
+  const [initialFeedback, setInitialFeedback] = useState<ContributionFeedbackRecord[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAccount() {
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        const body = await response.json() as { configured?: boolean; user?: SessionUser | null };
+        if (cancelled) return;
+        setAuthConfigured(Boolean(body.configured));
+        setSessionUser(body.user ?? null);
+        if (body.user) {
+          setSavedAnalysesLoading(true);
+          const [repositoriesResponse, analysesResponse] = await Promise.all([
+            fetch("/api/github/repositories", { cache: "no-store" }),
+            fetch("/api/saved-analyses", { cache: "no-store" }),
+          ]);
+          const repositoriesBody = await repositoriesResponse.json() as { repositories?: GithubRepositoryOption[] };
+          const analysesBody = await analysesResponse.json() as { analyses?: SavedAnalysisSummary[] };
+          if (!cancelled) {
+            setGithubRepositories(repositoriesBody.repositories ?? []);
+            setSavedAnalyses(analysesBody.analyses ?? []);
+          }
+        }
+      } catch {
+        if (!cancelled) setAccountError("Account features could not be loaded.");
+      } finally {
+        if (!cancelled) {
+          setAccountLoading(false);
+          setSavedAnalysesLoading(false);
+        }
+      }
+    }
+    const authError = new URLSearchParams(window.location.search).get("auth_error");
+    if (authError) setAccountError(authError);
+    void loadAccount();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const analysisId = analysis?.analysisId;
@@ -46,6 +105,7 @@ export default function Home() {
 
   function resetResults() {
     setAnalysis(null);
+    setAnalysisLive(false);
     setAnalysisError(null);
     setSelectedGalleryId(null);
     setSelectedNodeId(null);
@@ -53,6 +113,32 @@ export default function Home() {
     setTraceError(null);
     setTraceErrorCode(null);
     setActiveSection("top");
+    setComparison(null);
+    setInitialFeedback([]);
+  }
+
+  function presentAnalysis(result: AnalyzeResult, live = true) {
+    setActiveSection("opportunities");
+    setAnalysis(result);
+    setAnalysisLive(live);
+    setTrace(null);
+    setTraceErrorCode(null);
+    setTraceError(live ? null : "This is a saved snapshot. Rescan it to restore source-backed feature tracing.");
+    const firstScreen = result.interface.screens.find((screen) => screen.previewHtml);
+    if (firstScreen) {
+      setSelectedGalleryId(firstScreen.id);
+      setSelectedNodeId(findTraceNodeId(result.graph, firstScreen.location));
+    } else {
+      const firstRoute = result.graph.nodes.find((node) => node.type === "route");
+      setSelectedNodeId(firstRoute?.id ?? result.graph.nodes[0]?.id ?? null);
+    }
+  }
+
+  async function refreshSavedAnalyses() {
+    if (!sessionUser) return;
+    const response = await fetch("/api/saved-analyses", { cache: "no-store" });
+    const body = await response.json() as { analyses?: SavedAnalysisSummary[] };
+    if (response.ok) setSavedAnalyses(body.analyses ?? []);
   }
 
   async function handleAnalyze(event: React.FormEvent<HTMLFormElement>) {
@@ -63,27 +149,73 @@ export default function Home() {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoUrl }),
+        body: JSON.stringify({ repoUrl, profile: contributorProfile }),
       });
       const body = (await response.json()) as AnalyzeResult | { error?: string };
       if (!response.ok || !("graph" in body)) {
         throw new Error("error" in body ? body.error : "Repository analysis failed.");
       }
-      setActiveSection("start-here");
-      setAnalysis(body);
-      const firstScreen = body.interface.screens.find((screen) => screen.previewHtml);
-      if (firstScreen) {
-        setSelectedGalleryId(firstScreen.id);
-        setSelectedNodeId(findTraceNodeId(body.graph, firstScreen.location));
-      } else {
-        const firstRoute = body.graph.nodes.find((node) => node.type === "route");
-        setSelectedNodeId(firstRoute?.id ?? body.graph.nodes[0]?.id ?? null);
-      }
+      presentAnalysis(body);
+      setInitialFeedback([]);
+      if (sessionUser) await refreshSavedAnalyses();
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "Repository analysis failed.");
     } finally {
       setIsAnalyzing(false);
     }
+  }
+
+  async function handleOpenSaved(id: string) {
+    setAnalysisError(null);
+    const response = await fetch(`/api/saved-analyses/${encodeURIComponent(id)}`, { cache: "no-store" });
+    const body = await response.json() as {
+      analysis?: AnalyzeResult;
+      profile?: ContributorProfile;
+      feedback?: ContributionFeedbackRecord[];
+      error?: string;
+    };
+    if (!response.ok || !body.analysis || !body.profile) {
+      setAnalysisError(body.error ?? "Saved analysis could not be opened.");
+      return;
+    }
+    setContributorProfile(body.profile);
+    setInitialFeedback(body.feedback ?? []);
+    setComparison(null);
+    presentAnalysis(body.analysis, false);
+  }
+
+  async function handleRescan(id: string) {
+    setRescanningId(id);
+    setAnalysisError(null);
+    try {
+      const response = await fetch(`/api/saved-analyses/${encodeURIComponent(id)}/rescan`, { method: "POST" });
+      const body = await response.json() as {
+        analysis?: AnalyzeResult;
+        profile?: ContributorProfile;
+        comparison?: AnalysisComparison;
+        error?: string;
+      };
+      if (!response.ok || !body.analysis || !body.profile || !body.comparison) {
+        throw new Error(body.error ?? "Repository rescan failed.");
+      }
+      setContributorProfile(body.profile);
+      setInitialFeedback([]);
+      setComparison(body.comparison);
+      presentAnalysis(body.analysis);
+      await refreshSavedAnalyses();
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : "Repository rescan failed.");
+    } finally {
+      setRescanningId(null);
+    }
+  }
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setSessionUser(null);
+    setSavedAnalyses([]);
+    setGithubRepositories([]);
+    resetResults();
   }
 
   function handleSelectGalleryItem(itemId: string, graphNodeId: string | null) {
@@ -142,7 +274,13 @@ export default function Home() {
 
   function handleReset() {
     resetResults();
+    window.history.replaceState(null, "", "#top");
     window.setTimeout(() => document.getElementById("repo-url")?.focus(), 0);
+  }
+
+  function handleAnalyzeRealRepository() {
+    setRepoUrl("");
+    handleReset();
   }
 
   function handleSelectSection(section: SectionId) {
@@ -175,7 +313,19 @@ export default function Home() {
         >
           <span>RL</span>RepoLens
         </a>
-        <p>Turn a public repository into a clear, prioritized action plan.</p>
+        <div className="nav__actions">
+          <p>Find a contribution you can confidently start.</p>
+          {accountLoading ? <span className="account-status">Loading account…</span>
+            : sessionUser ? (
+              <div className="account-menu">
+                {sessionUser.avatarUrl ? <img src={sessionUser.avatarUrl} alt="" /> : null}
+                <span>@{sessionUser.login}</span>
+                <button type="button" onClick={handleLogout}>Sign out</button>
+              </div>
+            ) : authConfigured ? (
+              <a className="github-connect" href="/api/auth/github">Connect GitHub</a>
+            ) : <span className="account-status">GitHub setup needed</span>}
+        </div>
       </nav>
 
       {showOverview ? (
@@ -186,11 +336,12 @@ export default function Home() {
           aria-labelledby={analysis ? "section-nav-top" : undefined}
         >
           <header className="hero" id="top">
-            <p className="eyebrow">Open-source repository health check</p>
-            <h1>Find the best thing to fix next.</h1>
+            <p className="eyebrow">Contribution finder for open source</p>
+            <h1>Find work worth contributing.</h1>
             <p className="hero__copy">
-              Paste a public GitHub repository and get a short, evidence-backed list of issues,
-              unused files, and contribution-ready tasks. No repository code is executed.
+              Tell us what you know and how much time you have. RepoLens will inspect a public
+              repository and match you with three evidence-backed tasks you can actually start.
+              Connect GitHub to save reports and include private repositories you install RepoLens on.
             </p>
           </header>
 
@@ -198,21 +349,37 @@ export default function Home() {
             repoUrl={repoUrl}
             isAnalyzing={isAnalyzing}
             verifiedDemo={repoUrl.trim().toLowerCase() === BUNDLED_FIXTURE_REPO_URL}
+            profile={contributorProfile}
+            signedIn={Boolean(sessionUser)}
+            authConfigured={authConfigured}
+            repositories={githubRepositories}
             onRepoUrlChange={setRepoUrl}
+            onProfileChange={setContributorProfile}
             onSubmit={handleAnalyze}
           />
 
           <section className="how-it-works" aria-labelledby="how-it-works-heading">
             <div className="how-it-works__intro">
-              <p className="section-label">How it works</p>
-              <h2 id="how-it-works-heading">From repository to next step</h2>
+              <p className="section-label">What you get</p>
+              <h2 id="how-it-works-heading">A useful task, not another score</h2>
             </div>
             <ol>
-              <li><span>1</span><div><strong>Scan the source</strong><p>Read the files, setup, tests, and documentation safely.</p></div></li>
-              <li><span>2</span><div><strong>Rank what matters</strong><p>Separate high-value problems from low-confidence guesses.</p></div></li>
-              <li><span>3</span><div><strong>Pick a task</strong><p>Get the exact files, evidence, and a useful next action.</p></div></li>
+              <li><span>1</span><div><strong>Match your time</strong><p>Quick wins stay quick; larger work is shown only when it fits.</p></div></li>
+              <li><span>2</span><div><strong>Verify the evidence</strong><p>See exact files, confidence, and the limits of every finding.</p></div></li>
+              <li><span>3</span><div><strong>Start contributing</strong><p>Copy the task or open a prefilled GitHub issue in one click.</p></div></li>
             </ol>
           </section>
+
+          {accountError ? <p className="account-error" role="alert">{accountError}</p> : null}
+          {sessionUser ? (
+            <SavedAnalyses
+              analyses={savedAnalyses}
+              isLoading={savedAnalysesLoading}
+              rescanningId={rescanningId}
+              onOpen={handleOpenSaved}
+              onRescan={handleRescan}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -220,7 +387,7 @@ export default function Home() {
         <section className="analysis-state" aria-live="polite">
           <span className="spinner" aria-hidden="true" />
           <h2>Analyzing repository</h2>
-          <p>Fetching source read-only and reconstructing the interface…</p>
+          <p>Checking repository gaps and matching them to your contribution profile…</p>
         </section>
       ) : analysisError ? (
         <section className="analysis-state analysis-state--error" role="alert">
@@ -234,15 +401,21 @@ export default function Home() {
           <SectionNav activeId={activeSection} onSelect={handleSelectSection} />
 
           <div className="results-toolbar">
-            <span className="workspace__address">{analysis.repoUrl}</span>
+            <div>
+              <span className="results-toolbar__label">Current repository</span>
+              <span className="workspace__address">{analysis.repoUrl}</span>
+            </div>
             <button className="reset-button" type="button" onClick={handleReset}>
-              Reset analysis
+              New analysis
             </button>
           </div>
 
-          {activeSection === "start-here" ? (
-            <section id="section-view-start-here" className="report-view" role="tabpanel" aria-labelledby="section-nav-start-here">
-              <AuditOverview analysis={analysis} onViewGaps={() => handleSelectSection("gaps")} />
+          {comparison ? (
+            <section className="rescan-summary" aria-label="Changes since the previous analysis">
+              <strong>Repository rescanned</strong>
+              <span>{comparison.resolved.length} resolved</span>
+              <span>{comparison.added.length} new</span>
+              <span>{comparison.unchangedCount} unchanged</span>
             </section>
           ) : null}
 
@@ -254,7 +427,14 @@ export default function Home() {
 
           {activeSection === "opportunities" ? (
             <section id="section-view-opportunities" className="report-view" role="tabpanel" aria-labelledby="section-nav-opportunities">
-              <ContributionOpportunities analysis={analysis} />
+              <ContributionOpportunities
+                key={analysis.analysisId}
+                analysis={analysis}
+                profile={contributorProfile}
+                signedIn={Boolean(sessionUser)}
+                initialFeedback={initialFeedback}
+                onAnalyzeRealRepository={handleAnalyzeRealRepository}
+              />
             </section>
           ) : null}
 
@@ -272,7 +452,7 @@ export default function Home() {
                   onSelectNode={setSelectedNodeId}
                 />
                 <TracePanel
-                  disabled={!analysis}
+                  disabled={!analysis || !analysisLive}
                   isLoading={isTracing}
                   error={traceError}
                   errorCode={traceErrorCode}

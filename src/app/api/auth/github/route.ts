@@ -14,10 +14,8 @@ export async function GET(request: NextRequest) {
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   const returnToInput = request.nextUrl.searchParams.get("returnTo") ?? "/";
   const returnTo = returnToInput.startsWith("/") && !returnToInput.startsWith("//") ? returnToInput : "/";
-  const callback = new URL("/api/auth/github/callback", request.url).toString();
   const authorize = new URL("https://github.com/login/oauth/authorize");
   authorize.searchParams.set("client_id", process.env.GITHUB_APP_CLIENT_ID ?? "");
-  authorize.searchParams.set("redirect_uri", callback);
   authorize.searchParams.set("state", state);
   authorize.searchParams.set("code_challenge", challenge);
   authorize.searchParams.set("code_challenge_method", "S256");

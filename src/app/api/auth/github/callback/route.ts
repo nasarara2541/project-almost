@@ -27,7 +27,6 @@ export async function GET(request: NextRequest) {
     if (saved.state !== returnedState || Date.now() - saved.createdAt > 10 * 60 * 1_000) {
       return errorRedirect(request, "GitHub authorization expired. Please try again.");
     }
-    const callback = new URL("/api/auth/github/callback", request.url).toString();
     const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
@@ -35,7 +34,6 @@ export async function GET(request: NextRequest) {
         client_id: process.env.GITHUB_APP_CLIENT_ID ?? "",
         client_secret: process.env.GITHUB_APP_CLIENT_SECRET ?? "",
         code,
-        redirect_uri: callback,
         code_verifier: saved.verifier,
       }),
       cache: "no-store",
